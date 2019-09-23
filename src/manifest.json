@@ -1,0 +1,11 @@
+{
+    "name": "Rockstar Integration Plugin for Galaxy 2.0",
+    "platform": "rockstar",
+    "guid": "268a9114-0d01-4e12-bd44-d2662e00cf55",
+    "version": "0.50",
+    "description": "This plugin will allow for (basic) integration with the Rockstar Games Launcher.",
+    "author": "Tylerbrawl",
+    "email": "tylerbrawl@gmail.com",
+    "url": "",
+    "script": "plugin.py"
+}
