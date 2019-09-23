@@ -6,6 +6,6 @@
     "description": "This plugin will allow for (basic) integration with the Rockstar Games Launcher.",
     "author": "Tylerbrawl",
     "email": "tylerbrawl@gmail.com",
-    "url": "",
+    "url": "https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar",
     "script": "plugin.py"
 }
