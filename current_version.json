@@ -1,0 +1,9 @@
+{
+  "tag_name": "v0.1",
+  "assets":[
+    {
+      "browser_downloader_url": "https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/releases/download/v0.1/plugin.zip",
+      "name": "plugin.zip"
+    }
+  ]
+}
