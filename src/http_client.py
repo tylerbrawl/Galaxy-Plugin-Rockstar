@@ -95,36 +95,6 @@ class AuthenticatedHttpClient(HttpClient):
             raise
 
     async def authenticate(self):
-        """
-        url = "https://socialclub.rockstargames.com"
-
-        try:
-            s = requests.Session()
-            headers = {
-                "Host": "socialclub.rockstargames.com",
-                "Referer": "https://signin.rockstargames.com/",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-site",
-                "Sec-Fetch-User": "?1",
-                "User-Agent": USER_AGENT
-            }
-            s.get(url, headers=headers)
-        except Exception as e:
-            log.error("ERROR: There was a problem with authentication. Exception: " + repr(e))
-            raise
-        # log.debug("ROCKSTAR_COOKIE_CHECK")
-        # log.debug(cookies)
-
-        -------
-
-        "Sec-Fetch-Mode": "cors",
-        "Host": "",
-        "Origin": "https://socialclub.rockstargames.com",
-        "Referer": "https://socialclub.rockstargames.com/",
-        "X-Cache-Ver": "0",
-        "X-Lang": "en-US",
-        """
-
         if self._auth_lost_callback:
             # We need to refresh the credentials.
             self.bearer = await self.refresh_credentials()

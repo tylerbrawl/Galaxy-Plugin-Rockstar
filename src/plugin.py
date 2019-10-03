@@ -218,27 +218,6 @@ class RockstarPlugin(Plugin):
 
     async def check_game_statuses(self):
         self.updating_game_statuses = True
-        """
-                for local_game in await self.get_local_games():
-            title_id = get_game_title_id_from_ros_title_id(str(local_game.game_id))
-            if title_id in self.running_games_pids and check_if_process_exists(self.running_games_pids[title_id][0]):
-                self.update_local_game_status(LocalGame(local_game.game_id, LocalGameState.Running))
-                # self.running_games_pids[title_id][1] = False
-            elif self._local_client.get_path_to_game(title_id):
-                """"""
-                                if title_id in self.running_games_pids:
-                    state = LocalGameState.Running if self.running_games_pids[title_id][1] else LocalGameState.Installed
-                    self.update_local_game_status(LocalGame(local_game.game_id, state))
-                    if state == LocalGameState.Installed:
-                        del self.running_games_pids[title_id]
-                else:
-                """"""
-                self.update_local_game_status(LocalGame(local_game.game_id, LocalGameState.Installed))
-                if title_id in self.running_games_pids:
-                    del self.running_games_pids[title_id]
-            else:
-                self.update_local_game_status(LocalGame(local_game.game_id, LocalGameState.None_))
-        """
         for local_game in await self.get_local_games():
             self.update_local_game_status(local_game)
         await asyncio.sleep(5)
