@@ -254,8 +254,6 @@ class RockstarPlugin(Plugin):
         else:
             return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.None_)
 
-    # async def update_game_statuses(self):
-
     def tick(self):
         if not self.checking_for_new_games:
             log.debug("Checking for new games...")
