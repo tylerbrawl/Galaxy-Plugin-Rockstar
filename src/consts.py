@@ -14,6 +14,7 @@ AUTH_PARAMS = {
     "window_title": "Login to Rockstar Games Social Club",
     "window_width": 700,
     "window_height": 600,
-    "start_uri": r"https://signin.rockstargames.com/signin/user-form?cid=socialclub",
-    "end_uri_regex": ".*" + re.escape(r"https://scapi.rockstargames.com/feed/mdtoken") + ".*"
+    "start_uri": r"https://www.rockstargames.com/auth/scauth-login",
+    "end_uri_regex": r"https://www.rockstargames.com/auth/get-user.json.*"
 }
+

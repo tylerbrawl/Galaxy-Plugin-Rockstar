@@ -28,8 +28,10 @@ class AuthenticatedHttpClient(HttpClient):
     def __init__(self, store_credentials):
         self._store_credentials = store_credentials
         self.bearer = None
+        self.refresh = None
         self.user = None
         self._cookie_jar = CookieJar()
+        self._cookie_jar_ros = CookieJar()
         self._auth_lost_callback = None
         super().__init__(cookie_jar=self._cookie_jar)
 
@@ -51,7 +53,7 @@ class AuthenticatedHttpClient(HttpClient):
         return self.user is not None and self._auth_lost_callback is None
 
     # Side Note: The following method is meant to ensure that the access (bearer) token continues to remain relevant.
-    async def do_request(self, method, url, *args, **kwargs):
+    async def do_request(self, method, *args, **kwargs):
         try:
             return await self.request(method, *args, **kwargs)
         except Exception as e:
@@ -60,12 +62,12 @@ class AuthenticatedHttpClient(HttpClient):
             await self.authenticate()
             return await self.request(method, *args, **kwargs)
 
-    async def get_json_from_request_strict(self, url):
-        headers = {
-            "Authorization": f"Bearer {self.bearer}",
-            "X-Requested-With": "XMLHttpRequest",
-            "User-Agent": USER_AGENT
-        }
+    async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
+        headers = additional_headers if additional_headers is not None else {}
+        if include_default_headers:
+            headers["Authorization"] = f"Bearer {self.bearer}"
+            headers["X-Requested-With"] = "XMLHttpRequest"
+            headers["User-Agent"] = USER_AGENT
         try:
             s = requests.Session()
             s.trust_env = False
@@ -85,22 +87,38 @@ class AuthenticatedHttpClient(HttpClient):
         log.debug(cookies)
         return cookies['BearerToken']
 
+    async def get_cookies_for_headers(self):
+        cookie_string = ""
+        morsel_list = self._cookie_jar.__iter__()
+        for morsel in morsel_list:
+            cookie_string += "" + str(morsel.key) + "=" + str(morsel.value) + ";"
+            # log.debug("ROCKSTAR_CURR_COOKIE: " + cookie_string)
+        return cookie_string[:len(cookie_string) - 1]
+
     async def refresh_credentials(self):
+        log.debug("ROCKSTAR_COOKIES: " + await self.get_cookies_for_headers())
         try:
-            await self.request("GET", "https://socialclub.rockstargames.com")
-            new_bearer = await self.get_bearer_from_cookie_jar()
+            headers = {
+                "cookie": await self.get_cookies_for_headers(),
+                "referer": "https://www.rockstargames.com"
+            }
+            s = requests.Session()
+            resp = s.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers)
+            resp_json = resp.json()
+            log.debug("ROCKSTAR_AUTH_JSON: " + str(resp_json))
+            new_bearer = resp_json["user"]["auth_token"]["access_token"]
+            self.bearer = new_bearer
+            self.refresh = resp_json["user"]["auth_token"]["refresh_token"]
+            for key, value in s.cookies.get_dict().items():
+                self._cookie_jar.update_cookies({key: value})
             return new_bearer
         except Exception as e:
             log.error("ERROR: The request to refresh credentials resulted in this exception: " + repr(e))
             raise
 
     async def authenticate(self):
-        if self._auth_lost_callback:
-            # We need to refresh the credentials.
-            self.bearer = await self.refresh_credentials()
-            self._auth_lost_callback = None
-        else:
-            self.bearer = await self.get_bearer_from_cookie_jar()
+        # We need to refresh the credentials.
+        self.bearer = await self.refresh_credentials()
         log.debug("ROCKSTAR_HTTP_CHECK: Got bearer token: " + self.bearer)
 
         # With the bearer token, we can now access the profile information.

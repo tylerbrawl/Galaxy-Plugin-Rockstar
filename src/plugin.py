@@ -5,6 +5,7 @@ from galaxy.api.errors import InvalidCredentials
 
 from file_read_backwards import FileReadBackwards
 import asyncio
+import ctypes.wintypes
 import logging as log
 import os
 import pickle
@@ -31,6 +32,9 @@ class RockstarPlugin(Plugin):
         self.game_is_loading = True
         self.checking_for_new_games = False
         self.updating_game_statuses = False
+        self.buffer = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+        ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, self.buffer)
+        self.documents_location = self.buffer.value
 
     def is_authenticated(self):
         return self._http_client.is_authenticated()
@@ -58,9 +62,11 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials()
 
     async def pass_login_credentials(self, step, credentials, cookies):
+        log.debug("Made It")
         cookie_list = {}
         for cookie in cookies:
             cookie_list[cookie['name']] = cookie['value']
+        log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookie_list))
         self._http_client.update_cookies(cookie_list)
         try:
             user = await self._http_client.authenticate()
@@ -135,23 +141,21 @@ class RockstarPlugin(Plugin):
         return return_list
 
     async def get_owned_games(self):
-        # This is going to sound absolutely terrible, but I cannot think of any other way of doing this. Basically, for
-        # each game, the launcher records in a log which branch the user is on. If a default branch cannot be found for
-        # a game, then the user does not own the game. We need to search this log to see if the user owns the game or
-        # not.
-
-        # A better solution could be to use https://rgl-prod.ros.rockstargames.com/launcher/11/LauncherServices/App.asmx
-        # /GetApps?ticket= instead, but I have no idea as to how you would get the needed ticket. It
-        # also does not help that the Social Club website provides no way to check for owned games.
-
+        # Here is the actual implementation of getting the user's owned games:
+        # -Get the list of games_played from rockstargames.com/auth/get-user.json.
+        #   -If possible, use the launcher log to confirm which games are actual launcher games and which are
+        #   Steam/Retail games.
+        #   -If it is not possible to use the launcher log, then just use the list provided by the website.
         if not self.is_authenticated():
             for key, value in games_cache.items():
                 self.remove_game(value['rosTitleId'])
             self.owned_games_cache = []
             return
 
+        # Get the list of games_played from rockstargames.com/auth/get-user.json.
+
         # The log is in the Documents folder.
-        log_file = os.path.join(os.environ["USERPROFILE"], "Documents\\Rockstar Games\\Launcher\\launcher.log")
+        log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher.log")
         log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
         checked_games_count = 0
         total_games_count = len(games_cache)
