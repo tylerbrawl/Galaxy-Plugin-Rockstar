@@ -47,7 +47,8 @@ class RockstarPlugin(Plugin):
             log.info("INFO: The credentials were successfully obtained.")
             cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
             for cookie in cookies:
-                if cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com':
+                if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
+                        cookie['domain'] == '.socialclub.rockstargames.com'):
                     self._http_client.update_cookie(cookie['name'], cookie['value'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
@@ -205,7 +206,7 @@ class RockstarPlugin(Plugin):
                         if title_id in owned_title_ids:
                             # Case 1: The game is not actually owned on the launcher.
                             log.warning("ROCKSTAR_FAKE_GAME: The game with title ID " + title_id + " is not owned on "
-                                                                                                   "the Rockstar Games Launcher!")
+                                        "the Rockstar Games Launcher!")
                             owned_title_ids.remove(title_id)
                         checked_games_count += 1
                     if checked_games_count == total_games_count:
