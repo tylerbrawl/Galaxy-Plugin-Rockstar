@@ -49,7 +49,6 @@ class AuthenticatedHttpClient(HttpClient):
         self._cookie_jar.set_cookies_updated_callback(callback)
 
     def update_cookie(self, cookie_name, cookie_value):
-        log.debug("Made It")
         self._current_session.cookies[cookie_name] = cookie_value
 
     def set_auth_lost_callback(self, callback):
@@ -125,6 +124,7 @@ class AuthenticatedHttpClient(HttpClient):
     async def _get_user_json(self, message=None):
         try:
             headers = {
+                "accept": "application/json, text/plain, */*",
                 "cookie": await self.get_cookies_for_headers(),
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT

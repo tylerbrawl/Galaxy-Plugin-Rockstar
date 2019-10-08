@@ -29,6 +29,11 @@ class RockstarPlugin(Plugin):
         self.owned_games_cache = []
         self.local_games_cache = []
         self.running_games_pids = {}
+        self.needed_cookies = [
+            "rockstarweb_lang.prod",
+            "NMSession",
+            "ScAuthTokenData"
+        ]
         self.game_is_loading = True
         self.checking_for_new_games = False
         self.updating_game_statuses = False
@@ -46,15 +51,18 @@ class RockstarPlugin(Plugin):
         try:
             log.info("INFO: The credentials were successfully obtained.")
             cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
+            log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
             for cookie in cookies:
-                if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
-                        cookie['domain'] == '.socialclub.rockstargames.com'):
-                    self._http_client.update_cookie(cookie['name'], cookie['value'])
+                # if (cookie.domain == 'www.rockstargames.com' or cookie.domain == 'signin.rockstargames.com' or
+                # cookie.domain == '.socialclub.rockstargames.com'):
+                if cookie.name in self.needed_cookies:
+                    self._http_client.update_cookie(cookie.name, cookie.value)
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
         except Exception as e:
-            log.warning("ROCKSTAR_AUTH_WARNING: The credentials are outdated. Attempting to get new credentials...")
+            log.warning("ROCKSTAR_AUTH_WARNING: The exception " + repr(e) + " was thrown, presumably because of "
+                        "outdated credentials. Attempting to get new credentials...")
             self._http_client.set_auth_lost_callback(self.lost_authentication)
             try:
                 user = await self._http_client.authenticate()
@@ -65,13 +73,13 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials()
 
     async def pass_login_credentials(self, step, credentials, cookies):
-        cookie_list = []
         # for cookie in cookies:
         # cookie_list[cookie['name']] = cookie['value']
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
-            if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
-                    cookie['domain'] == '.socialclub.rockstargames.com'):
+            # if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
+            # cookie['domain'] == '.socialclub.rockstargames.com'):
+            if cookie['name'] in self.needed_cookies:
                 self._http_client.update_cookie(cookie['name'], cookie['value'])
         try:
             user = await self._http_client.authenticate()
