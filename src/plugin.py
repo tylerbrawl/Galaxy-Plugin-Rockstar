@@ -29,11 +29,6 @@ class RockstarPlugin(Plugin):
         self.owned_games_cache = []
         self.local_games_cache = []
         self.running_games_pids = {}
-        self.needed_cookies = [
-            "rockstarweb_lang.prod",
-            "NMSession",
-            "ScAuthTokenData"
-        ]
         self.game_is_loading = True
         self.checking_for_new_games = False
         self.updating_game_statuses = False
@@ -53,10 +48,7 @@ class RockstarPlugin(Plugin):
             cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
             log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
             for cookie in cookies:
-                # if (cookie.domain == 'www.rockstargames.com' or cookie.domain == 'signin.rockstargames.com' or
-                # cookie.domain == '.socialclub.rockstargames.com'):
-                if cookie.name in self.needed_cookies:
-                    self._http_client.update_cookie(cookie.name, cookie.value)
+                self._http_client.update_cookie(cookie.name, cookie.value)
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
@@ -73,14 +65,9 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials()
 
     async def pass_login_credentials(self, step, credentials, cookies):
-        # for cookie in cookies:
-        # cookie_list[cookie['name']] = cookie['value']
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
-            # if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
-            # cookie['domain'] == '.socialclub.rockstargames.com'):
-            if cookie['name'] in self.needed_cookies:
-                self._http_client.update_cookie(cookie['name'], cookie['value'])
+            self._http_client.update_cookie(cookie['name'], cookie['value'])
         try:
             user = await self._http_client.authenticate()
         except Exception as e:
@@ -105,7 +92,6 @@ class RockstarPlugin(Plugin):
         # requests.
 
         # We first need to get the number of friends.
-        current_index = 0
         url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                "pageIndex=0&pageSize=30")
         current_page = await self._http_client.get_json_from_request_strict(url)
@@ -206,9 +192,6 @@ class RockstarPlugin(Plugin):
                                 log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
                                             " is owned, but it has never been played!")
                             owned_title_ids.append(title_id)
-                        # game = self.create_game_from_title_id(title_id)
-                        # if game not in self.owned_games_cache:
-                        # self.owned_games_cache.append(self.create_game_from_title_id(title_id))
                         checked_games_count += 1
                     elif "no branches!" in line:
                         title_id = line[65:75].strip()
