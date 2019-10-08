@@ -167,7 +167,8 @@ class RockstarPlugin(Plugin):
                 owned_title_ids.append(title_id)
                 log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + title_id + "!")
         except Exception as e:
-            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: Falling back to log file check...")
+            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get the"
+                      " user's played games online. Falling back to log file check...")
             online_check_success = False
 
         # The log is in the Documents folder.
@@ -192,7 +193,7 @@ class RockstarPlugin(Plugin):
                         title_id = line[65:75].strip()
                         log.debug("ROCKSTAR_LOG_GAME: The game with title ID " + title_id + " is owned!")
                         if title_id not in owned_title_ids:
-                            if online_check_success is False:
+                            if online_check_success is True:
                                 # Case 2: The game is owned, but has not been played.
                                 log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
                                             " is owned, but it has never been played!")
@@ -220,8 +221,8 @@ class RockstarPlugin(Plugin):
                     self.remove_game(value['rosTitleId'])
             return self.owned_games_cache
         else:
-            log.warning("WARNING: The log file could not be found and/or read from. Assuming that the online list is"
-                        " correct...")
+            log.warning("ROCKSTAR_LOG_WARNING: The log file could not be found and/or read from. Assuming that the "
+                        "online list is correct...")
             for title_id in owned_title_ids:
                 game = self.create_game_from_title_id(title_id)
                 if game not in self.owned_games_cache:

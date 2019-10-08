@@ -90,9 +90,12 @@ games_cache = {
 }
 
 
-def get_game_title_id_from_ros_title_id(rosTitleId):
+def get_game_title_id_from_ros_title_id(ros_title_id):
+    # The rosTitleId value is used by the Rockstar Games Launcher to uniquely identify the games that it supports.
+    # For some reason, Rockstar made these values different from the internal numerical IDs for the same games on their
+    # website (which are listed here as the onlineTitleId value).
     for game, d in games_cache.items():
-        if d["rosTitleId"] == int(rosTitleId):
+        if d["rosTitleId"] == int(ros_title_id):
             return game
     return None
 
@@ -110,6 +113,9 @@ def get_game_title_id_from_ros_title_id(rosTitleId):
 
 
 def get_game_title_id_from_online_title_id(online_title_id):
+    # The onlineTitleId value is used to uniquely identify each game across Rockstar's various websites, including
+    # https://www.rockstargames.com/auth/get-user.json. These values seem to have no use within the Rockstar Games
+    # Launcher.
     for game, d in games_cache.items():
         if d["onlineTitleId"] == int(online_title_id):
             return game
