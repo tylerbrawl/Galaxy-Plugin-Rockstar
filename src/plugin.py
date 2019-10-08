@@ -12,7 +12,7 @@ import pickle
 import sys
 
 from consts import AUTH_PARAMS
-from game_cache import games_cache, get_game_title_id_from_ros_title_id
+from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id
 from http_client import AuthenticatedHttpClient
 from local import LocalClient, check_if_process_exists
 from version import __version__
@@ -40,13 +40,15 @@ class RockstarPlugin(Plugin):
         return self._http_client.is_authenticated()
 
     async def authenticate(self, stored_credentials=None):
+        self._http_client.create_session(stored_credentials)
         if not stored_credentials:
             return NextStep("web_session", AUTH_PARAMS)
         try:
             log.info("INFO: The credentials were successfully obtained.")
             cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
             for cookie in cookies:
-                self._http_client.update_cookies({cookie.key: cookie.value})
+                if cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com':
+                    self._http_client.update_cookie(cookie['name'], cookie['value'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
@@ -62,12 +64,14 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials()
 
     async def pass_login_credentials(self, step, credentials, cookies):
-        log.debug("Made It")
-        cookie_list = {}
+        cookie_list = []
+        # for cookie in cookies:
+        # cookie_list[cookie['name']] = cookie['value']
+        log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
-            cookie_list[cookie['name']] = cookie['value']
-        log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookie_list))
-        self._http_client.update_cookies(cookie_list)
+            if (cookie['domain'] == 'www.rockstargames.com' or cookie['domain'] == 'signin.rockstargames.com' or
+                    cookie['domain'] == '.socialclub.rockstargames.com'):
+                self._http_client.update_cookie(cookie['name'], cookie['value'])
         try:
             user = await self._http_client.authenticate()
         except Exception as e:
@@ -152,43 +156,78 @@ class RockstarPlugin(Plugin):
             self.owned_games_cache = []
             return
 
-        # Get the list of games_played from rockstargames.com/auth/get-user.json.
+        # Get the list of games_played from https://www.rockstargames.com/auth/get-user.json.
+        owned_title_ids = []
+        online_check_success = True
+        try:
+            played_games = await self._http_client.get_played_games()
+            for game in played_games:
+                title_id = get_game_title_id_from_online_title_id(game)
+                owned_title_ids.append(title_id)
+                log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + title_id + "!")
+        except Exception as e:
+            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: Falling back to log file check...")
+            online_check_success = False
 
         # The log is in the Documents folder.
         log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher.log")
         log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
         checked_games_count = 0
         total_games_count = len(games_cache)
-        owned_title_ids = []
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
                 for line in frb:
+                    # We need to do two main things with the log file:
+                    # 1. If a game is present in owned_title_ids but not owned according to the log file, then it is
+                    #    assumed to be a non-Launcher game, and is removed from the list.
+                    # 2. If a game is owned according to the log file but is not already present in owned_title_ids,
+                    #    then it is assumed that the user has purchased the game on the Launcher, but has not yet played
+                    #    it. In this case, the game will be added to owned_title_ids.
                     if ("launcher" not in line) and ("on branch " in line):  # Found a game!
                         # Each log line for a title branch report describes the title id of the game starting at
                         # character 65. Interestingly, the lines all have the same colon as character 75. This implies
                         # that this format was intentionally done by Rockstar, so they likely will not change it anytime
                         # soon.
                         title_id = line[65:75].strip()
-                        log.debug("ROCKSTAR_OWNED_GAME: The game with title ID " + title_id + " is owned!")
-                        owned_title_ids.append(title_id)
-                        game = self.create_game_from_title_id(title_id)
-                        if game not in self.owned_games_cache:
-                            self.owned_games_cache.append(self.create_game_from_title_id(title_id))
+                        log.debug("ROCKSTAR_LOG_GAME: The game with title ID " + title_id + " is owned!")
+                        if title_id not in owned_title_ids:
+                            if online_check_success is False:
+                                # Case 2: The game is owned, but has not been played.
+                                log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
+                                            " is owned, but it has never been played!")
+                            owned_title_ids.append(title_id)
+                        # game = self.create_game_from_title_id(title_id)
+                        # if game not in self.owned_games_cache:
+                        # self.owned_games_cache.append(self.create_game_from_title_id(title_id))
                         checked_games_count += 1
                     elif "no branches!" in line:
+                        title_id = line[65:75].strip()
+                        if title_id in owned_title_ids:
+                            # Case 1: The game is not actually owned on the launcher.
+                            log.warning("ROCKSTAR_FAKE_GAME: The game with title ID " + title_id + " is not owned on "
+                                                                                                   "the Rockstar Games Launcher!")
+                            owned_title_ids.remove(title_id)
                         checked_games_count += 1
                     if checked_games_count == total_games_count:
                         break
+                for title_id in owned_title_ids:
+                    game = self.create_game_from_title_id(title_id)
+                    if game not in self.owned_games_cache:
+                        self.owned_games_cache.append(game)
             for key, value in games_cache.items():
                 if key not in owned_title_ids:
                     self.remove_game(value['rosTitleId'])
             return self.owned_games_cache
         else:
-            log.warning("WARNING: The log file could not be found and/or read from. Assuming all games are owned...")
-            for key in self.games_cache:
-                game = self.create_game_from_title_id(key)
+            log.warning("WARNING: The log file could not be found and/or read from. Assuming that the online list is"
+                        " correct...")
+            for title_id in owned_title_ids:
+                game = self.create_game_from_title_id(title_id)
                 if game not in self.owned_games_cache:
-                    self.owned_games_cache.append(self.create_game_from_title_id(key))
+                    self.owned_games_cache.append(game)
+            for key, value in games_cache.items():
+                if key not in owned_title_ids:
+                    self.remove_game(value['rosTitleId'])
             return self.owned_games_cache
 
     async def get_local_games(self):

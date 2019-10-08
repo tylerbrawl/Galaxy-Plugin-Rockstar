@@ -91,19 +91,26 @@ games_cache = {
 
 
 def get_game_title_id_from_ros_title_id(rosTitleId):
-    switch = {
-        '18': "gtasa",
-        '11': "gta5",
-        '9': "lanoire",
-        '10': "mp3",
-       #24: "lanoirevr",
-        '26': "gta3",
-        '27': "gtavc",
-        '23': "bully"
-    }
-    return switch[rosTitleId]
+    for game, d in games_cache.items():
+        if d["rosTitleId"] == int(rosTitleId):
+            return game
+    return None
+
+    # switch = {
+    #    '18': "gtasa",
+    #    '11': "gta5",
+    #    '9': "lanoire",
+    #    '10': "mp3",
+    #   #24: "lanoirevr",
+    #    '26': "gta3",
+    #    '27': "gtavc",
+    #    '23': "bully"
+    # }
+    # return switch[rosTitleId]
+
 
 def get_game_title_id_from_online_title_id(online_title_id):
-    switch = {
-
-    }
+    for game, d in games_cache.items():
+        if d["onlineTitleId"] == int(online_title_id):
+            return game
+    return None
