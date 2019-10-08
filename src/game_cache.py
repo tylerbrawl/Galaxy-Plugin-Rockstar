@@ -13,9 +13,7 @@ games_cache = {
         "rosTitleId": 18,
         "onlineTitleId": 31,
         "launchEXE": "gta_sa.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "gta5": {
         "friendlyName": "Grand Theft Auto V",
@@ -23,9 +21,7 @@ games_cache = {
         "rosTitleId": 11,
         "onlineTitleId": 241,
         "launchEXE": "GTA5.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "lanoire": {
         "friendlyName": "L.A. Noire: Complete Edition",
@@ -33,9 +29,7 @@ games_cache = {
         "rosTitleId": 9,
         "onlineTitleId": 35,
         "launchEXE": "LANoire.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "mp3": {
         "friendlyName": "Max Payne 3",
@@ -43,9 +37,7 @@ games_cache = {
         "rosTitleId": 10,
         "onlineTitleId": 40,
         "launchEXE": "MaxPayne3.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     # "lanoirevr": {
     #    "friendlyName": "L.A. Noire: The VR Case Files",
@@ -53,9 +45,7 @@ games_cache = {
     #    "rosTitleId": 24,
     #    "onlineTitleId": 35,  # For some reason, this is the same as L.A. Noire's ID.
     #    "launchEXE": "LANoireVR.exe",
-    #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-    #    "owned": False,
-    #    "installed": False
+    #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     # },
     "gta3": {
         "friendlyName": "Grand Theft Auto III",
@@ -63,9 +53,7 @@ games_cache = {
         "rosTitleId": 26,
         "onlineTitleId": 24,
         "launchEXE": "gta3.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "gtavc": {
         "friendlyName": "Grand Theft Auto: Vice City",
@@ -73,9 +61,7 @@ games_cache = {
         "rosTitleId": 27,
         "onlineTitleId": 33,
         "launchEXE": "gta-vc.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "bully": {
         "friendlyName": "Bully: Scholarship Edition",
@@ -83,9 +69,15 @@ games_cache = {
         "rosTitleId": 23,
         "onlineTitleId": 19,
         "launchEXE": "Bully.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "owned": False,
-        "installed": False
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+    },
+    "rdr2": {
+        "friendlyName": "Red Dead Redemption 2",
+        "guid": "[Missing]",  # Update this value from the Rockstar Games Launcher as soon as possible.
+        "rosTitleId": 13,
+        "onlineTitleId": 912,
+        "launchEXE": "RDR2.exe",
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     }
 }
 
