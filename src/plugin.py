@@ -286,7 +286,7 @@ class RockstarPlugin(Plugin):
         self.running_games_pids[title_id] = [await self._local_client.launch_game_from_title_id(title_id), True]
         log.debug("ROCKSTAR_PIDS: " + str(self.running_games_pids))
         if self.running_games_pids[title_id][0] != '-1':
-            self.update_local_game_status(LocalGame(game_id, LocalGameState.Running))
+            self.update_local_game_status(LocalGame(game_id, LocalGameState.Running | LocalGameState.Installed))
 
     async def install_game(self, game_id):
         title_id = get_game_title_id_from_ros_title_id(game_id)
@@ -306,7 +306,8 @@ class RockstarPlugin(Plugin):
 
     def create_local_game_from_title_id(self, title_id, is_running, is_installed):
         if is_running:
-            return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.Running)
+            return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.Running |
+                             LocalGameState.Installed)
         elif is_installed:
             return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.Installed)
         else:
