@@ -38,18 +38,27 @@ class AuthenticatedHttpClient(HttpClient):
         self._cookie_jar = CookieJar()
         self._cookie_jar_ros = CookieJar()
         self._auth_lost_callback = None
+        self._current_auth_token = None
+        self._first_auth = True
         super().__init__(cookie_jar=self._cookie_jar)
 
     def get_credentials(self):
         creds = self.user
-        creds['cookie_jar'] = pickle.dumps(self._current_session.cookies).hex()
+        # It might seem strange to store the entire session object in hexadecimal, rather than just the session's
+        # cookies. However, keeping the session object intact is necessary in order to allow ScAuthTokenData to be
+        # successfully authenticated. My guess is that the ScAuthTokenData uses some form of browser fingerprinting,
+        # as using a value from Chrome on Firefox returned an error. Likewise, creating a new session object, rather
+        # than reimplementing the old session object, returns an error when using a correct ScAuthTokenData value, even
+        # if the two sessions have equivalent cookies.
+        creds['session_object'] = pickle.dumps(self._current_session).hex()
+        creds['current_auth_token'] = self._current_auth_token
         return creds
 
     def set_cookies_updated_callback(self, callback):
         self._cookie_jar.set_cookies_updated_callback(callback)
 
-    def update_cookie(self, cookie_name, cookie_value):
-        self._current_session.cookies[cookie_name] = cookie_value
+    def update_cookie(self, cookie):
+        self._current_session.cookies.set(**cookie)
 
     def set_auth_lost_callback(self, callback):
         self._auth_lost_callback = callback
@@ -57,12 +66,15 @@ class AuthenticatedHttpClient(HttpClient):
     def is_authenticated(self):
         return self.user is not None and self._auth_lost_callback is None
 
+    def set_current_auth_token(self, token):
+        self._current_auth_token = token
+
     def create_session(self, stored_credentials):
-        if self._current_session is None:
+        if stored_credentials is None:
             self._current_session = requests.Session()
-            if stored_credentials is not None:
-                self._current_session.cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
             self._current_session.max_redirects = 300
+        elif self._current_session is None:
+            self._current_session = pickle.loads(bytes.fromhex(stored_credentials['session_object']))
 
     # Side Note: The following method is meant to ensure that the access (bearer) token continues to remain relevant.
     async def do_request(self, method, *args, **kwargs):
@@ -123,13 +135,22 @@ class AuthenticatedHttpClient(HttpClient):
 
     async def _get_user_json(self, message=None):
         try:
+            old_auth = self._current_session.cookies['ScAuthTokenData']
+            log.debug("ROCKSTAR_OLD_AUTH: " + str(old_auth))
             headers = {
                 "accept": "application/json, text/plain, */*",
-                "cookie": await self.get_cookies_for_headers(),
+                "connection": "keep-alive",
+                "cookie": "ScAuthTokenData=" + self._current_auth_token,
+                "host": "www.rockstargames.com",
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
             }
-            resp = self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers)
+            resp = self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
+                                             allow_redirects=False)
+            new_auth = self._current_session.cookies['ScAuthTokenData']
+            log.debug("ROCKSTAR_NEW_AUTH: " + str(new_auth))
+            if self._current_auth_token is None or new_auth != old_auth:
+                self._current_auth_token = new_auth
             # for key, value in self._current_session.cookies.get_dict().items():
             # self._cookie_jar.update_cookies({key: value})
             return resp.json()

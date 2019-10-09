@@ -45,10 +45,17 @@ class RockstarPlugin(Plugin):
             return NextStep("web_session", AUTH_PARAMS)
         try:
             log.info("INFO: The credentials were successfully obtained.")
-            cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
+            cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
             log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
             for cookie in cookies:
-                self._http_client.update_cookie(cookie.name, cookie.value)
+                cookie_object = {
+                    "name": cookie.name,
+                    "value": cookie.value,
+                    "domain": cookie.domain,
+                    "path": cookie.path
+                }
+                self._http_client.update_cookie(cookie_object)
+            self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
@@ -67,7 +74,15 @@ class RockstarPlugin(Plugin):
     async def pass_login_credentials(self, step, credentials, cookies):
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
-            self._http_client.update_cookie(cookie['name'], cookie['value'])
+            if cookie['name'] == "ScAuthTokenData":
+                self._http_client.set_current_auth_token(cookie['value'])
+            cookie_object = {
+                "name": cookie['name'],
+                "value": cookie['value'],
+                "domain": cookie['domain'],
+                "path": cookie['path']
+            }
+            self._http_client.update_cookie(cookie_object)
         try:
             user = await self._http_client.authenticate()
         except Exception as e:
