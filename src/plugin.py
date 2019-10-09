@@ -75,6 +75,13 @@ class RockstarPlugin(Plugin):
             raise InvalidCredentials()
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
+    async def shutdown(self):
+        # Before the plugin shuts down, we need to store the final cookies. Specifically, ScAuthTokenData must remain
+        # relevant for the plugin to continue working.
+        log.debug("ROCKSTAR_SHUTDOWN: Storing final credentials...")
+        self.store_credentials(self._http_client.get_credentials())
+        await self._http_client.close()
+
     def create_total_games_cache(self):
         cache = []
         for title_id in list(games_cache):
