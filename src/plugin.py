@@ -194,7 +194,23 @@ class RockstarPlugin(Plugin):
         total_games_count = len(games_cache)
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
-                for line in frb:
+                while checked_games_count < total_games_count:
+                    line = None
+                    try:
+                        line = frb.readline()
+                    except UnicodeDecodeError as e:
+                        log.warning("ROCKSTAR_LOG_UNICODE_WARNING: An invalid Unicode character was found in the line "
+                                    + line + ". Continuing to next line...")
+                        continue
+                    except Exception as e:
+                        log.error("ROCKSTAR_LOG_ERROR: Reading " + line + " from the log file resulted in the "  
+                                  "exception " + repr(e) + " being thrown. Using the online list... (Please report "
+                                  "this issue on the plugin's GitHub page!)")
+                        break
+                    if line is None:
+                        log.error("ROCKSTAR_LOG_FINISHED_ERROR: The entire log file was read, but all of the games "
+                                  "could not be accounted for. Proceeding to import the games that have been "
+                                  "confirmed...")
                     # We need to do two main things with the log file:
                     # 1. If a game is present in owned_title_ids but not owned according to the log file, then it is
                     #    assumed to be a non-Launcher game, and is removed from the list.
