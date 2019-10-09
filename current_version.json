@@ -1,8 +1,8 @@
 {
-  "tag_name": "v0.1",
+  "tag_name": "v0.2",
   "assets":[
     {
-      "browser_downloader_url": "https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/releases/download/v0.1/plugin.zip",
+      "browser_downloader_url": "https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/releases/download/v0.2/plugin.zip",
       "name": "plugin.zip"
     }
   ]
