@@ -48,6 +48,18 @@ class RockstarPlugin(Plugin):
             cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
             log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
             for cookie in cookies:
+                """
+                if cookie.name == "ScAuthTokenData":
+                    log.debug("ROCKSTAR_AUTH_COOKIE_OLD: " + cookie.value)
+                    log.debug("ROCKSTAR_AUTH_COOKIE_PROPOSE: " + stored_credentials['current_auth_token'])
+                    cookie_object = {
+                        "name": cookie.name,
+                        "value": stored_credentials['current_auth_token'],
+                        "domain": cookie.domain,
+                        "path": cookie.path
+                    }
+                else:
+                """
                 cookie_object = {
                     "name": cookie.name,
                     "value": cookie.value,
@@ -55,6 +67,7 @@ class RockstarPlugin(Plugin):
                     "path": cookie.path
                 }
                 self._http_client.update_cookie(cookie_object)
+            log.debug("ROCKSTAR_AUTH_COOKIE_NEW: " + self._http_client.get_named_cookie('ScAuthTokenData'))
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
@@ -91,10 +104,6 @@ class RockstarPlugin(Plugin):
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):
-        # Before the plugin shuts down, we need to store the final cookies. Specifically, ScAuthTokenData must remain
-        # relevant for the plugin to continue working.
-        log.debug("ROCKSTAR_SHUTDOWN: Storing final credentials...")
-        self.store_credentials(self._http_client.get_credentials())
         await self._http_client.close()
 
     def create_total_games_cache(self):
@@ -198,7 +207,7 @@ class RockstarPlugin(Plugin):
                     line = None
                     try:
                         line = frb.readline()
-                    except UnicodeDecodeError as e:
+                    except UnicodeDecodeError:
                         log.warning("ROCKSTAR_LOG_UNICODE_WARNING: An invalid Unicode character was found in the line "
                                     + line + ". Continuing to next line...")
                         continue

@@ -58,6 +58,8 @@ class AuthenticatedHttpClient(HttpClient):
         self._cookie_jar.set_cookies_updated_callback(callback)
 
     def update_cookie(self, cookie):
+        log.debug("ROCKSTAR_COOKIE_DELETE: Deleting cookie " + cookie['name'] + "...")
+        del self._current_session.cookies[cookie['name']]
         self._current_session.cookies.set(**cookie)
 
     def set_auth_lost_callback(self, callback):
@@ -69,12 +71,19 @@ class AuthenticatedHttpClient(HttpClient):
     def set_current_auth_token(self, token):
         self._current_auth_token = token
 
+    def get_current_auth_token(self):
+        return self._current_auth_token
+
+    def get_named_cookie(self, cookie_name):
+        return self._current_session.cookies[cookie_name]
+
     def create_session(self, stored_credentials):
         if stored_credentials is None:
             self._current_session = requests.Session()
             self._current_session.max_redirects = 300
         elif self._current_session is None:
             self._current_session = pickle.loads(bytes.fromhex(stored_credentials['session_object']))
+            self._current_session.cookies.clear()
 
     # Side Note: The following method is meant to ensure that the access (bearer) token continues to remain relevant.
     async def do_request(self, method, *args, **kwargs):
@@ -118,21 +127,6 @@ class AuthenticatedHttpClient(HttpClient):
             # log.debug("ROCKSTAR_CURR_COOKIE: " + cookie_string)
         return cookie_string[:len(cookie_string) - 1]
 
-    def _create_fingerprint(self):
-        # Just ignore this for now. There is no way we could fake the fingerprint with Requests.
-        language = self._cookie_jar.__iter__()
-        for morsel in self._cookie_jar.__iter__():
-            if str(morsel.key) == "Culture":
-                language = morsel.value
-                break
-        return ('{"fp":{"user_agent":"30f28f56d63e0c977e9967a4c18366f0","language":"' + language + '",'
-                '"pixel_ratio":1.2395833730697632,"timezone_offset":' + str(self._utc_offset) + ',"session_storage":1,'
-                '"local_storage":1,"indexed_db":1,"open_database":1,"cpu_class":"unknown","navigator_platform":'
-                '"Win32","do_not_track":"1", "regular_plugins":"","canvas":"6ffefc940a1bc9b162bee2a51875f65b",'
-                '"webgl":"37db41470e8329a2a047bc971c8595e9","adblock":false,"has_lied_os":false,'
-                '"touch_support":"0;false;false","device_name":"Chrome on Windows",'
-                '"js_fonts":"a7627c8c66c03d6782fb6f14c370514d"}}')
-
     async def _get_user_json(self, message=None):
         try:
             old_auth = self._current_session.cookies['ScAuthTokenData']
@@ -149,10 +143,11 @@ class AuthenticatedHttpClient(HttpClient):
                                              allow_redirects=False)
             new_auth = self._current_session.cookies['ScAuthTokenData']
             log.debug("ROCKSTAR_NEW_AUTH: " + str(new_auth))
-            if self._current_auth_token is None or new_auth != old_auth:
-                self._current_auth_token = new_auth
-            # for key, value in self._current_session.cookies.get_dict().items():
-            # self._cookie_jar.update_cookies({key: value})
+            self._current_auth_token = new_auth
+            if new_auth != old_auth:
+                log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
+                if self.user is not None:
+                    self._store_credentials(self.get_credentials())
             return resp.json()
         except Exception as e:
             if message is not None:
