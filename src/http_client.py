@@ -40,8 +40,6 @@ class AuthenticatedHttpClient(HttpClient):
         self._auth_lost_callback = None
         self._current_auth_token = None
         self._first_auth = True
-        # The variable self._is_busy is meant to prevent race conditions. Namely,
-        self._is_busy = False
         super().__init__(cookie_jar=self._cookie_jar)
 
     def get_credentials(self):
