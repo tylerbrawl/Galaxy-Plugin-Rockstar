@@ -115,7 +115,12 @@ class RockstarPlugin(Plugin):
         # We first need to get the number of friends.
         url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                "pageIndex=0&pageSize=30")
-        current_page = await self._http_client.get_json_from_request_strict(url)
+        try:
+            current_page = await asyncio.wait_for(self._http_client.get_json_from_request_strict(url), timeout=30.0)
+        except asyncio.TimeoutError:
+            log.error("ROCKSTAR_FRIENDS_ERROR: The request to import the friends list has timed out. Returning cached "
+                      "friends list...")
+            return self.friends_cache
         log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
         num_friends = current_page['rockstarAccountList']['totalFriends']
         num_pages_required = num_friends / 30 if num_friends % 30 != 0 else (num_friends / 30) - 1
@@ -140,11 +145,19 @@ class RockstarPlugin(Plugin):
             for i in range(1, int(num_pages_required + 1)):
                 url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                        "pageIndex=" + str(i) + "&pageSize=30")
-                return_list.append(friend for friend in await self._get_friends(url))
+                try:
+                    return_list.append(friend for friend in await self._get_friends(url))
+                except asyncio.TimeoutError:
+                    return self.friends_cache
         return return_list
 
     async def _get_friends(self, url):
-        current_page = await self._http_client.get_json_from_request_strict(url)
+        try:
+            current_page = await asyncio.wait_for(self._http_client.get_json_from_request_strict(url), timeout=30.0)
+        except asyncio.TimeoutError:
+            log.error("ROCKSTAR_FRIENDS_ERROR: The request to import the friends list has timed out. Returning cached "
+                      "friends list...")
+            raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
@@ -220,6 +233,7 @@ class RockstarPlugin(Plugin):
             game = self.create_game_from_title_id(title_id)
             if game not in self.owned_games_cache:
                 log.debug("ROCKSTAR_ADD_GAME: Adding " + title_id + " to owned games cache...")
+                self.add_game(game)
                 self.owned_games_cache.append(game)
         if remove_all is True:
             for key, value in games_cache.items():
@@ -318,12 +332,7 @@ class RockstarPlugin(Plugin):
 
     async def check_for_new_games(self):
         self.checking_for_new_games = True
-        old_games_cache = self.owned_games_cache
         await self.get_owned_games()
-        new_games_cache = self.owned_games_cache
-        for game in new_games_cache:
-            if game not in old_games_cache:
-                self.add_game(game)
         await asyncio.sleep(60)
         self.checking_for_new_games = False
 
@@ -353,6 +362,10 @@ class RockstarPlugin(Plugin):
         title_id = get_game_title_id_from_ros_title_id(game_id)
         log.debug("ROCKSTAR_INSTALL_REQUEST: Requesting to install " + title_id + "...")
         self._local_client.install_game_from_title_id(title_id)
+        # If the game is not released yet, then we should allow them to see this on the Rockstar Games Launcher, but the
+        # game's installation status should not be changed.
+        if games_cache[title_id]["isPreOrder"]:
+            return
         self.update_local_game_status(LocalGame(game_id, LocalGameState.Installed))
 
     async def uninstall_game(self, game_id):

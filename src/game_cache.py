@@ -77,7 +77,8 @@ games_cache = {
         "rosTitleId": 13,
         "onlineTitleId": 912,
         "launchEXE": "RDR2.exe",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": True
     }
 }
 
