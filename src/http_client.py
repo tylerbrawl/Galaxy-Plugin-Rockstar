@@ -58,7 +58,6 @@ class AuthenticatedHttpClient(HttpClient):
         self._cookie_jar.set_cookies_updated_callback(callback)
 
     def update_cookie(self, cookie):
-        log.debug("ROCKSTAR_COOKIE_DELETE: Deleting cookie " + cookie['name'] + "...")
         del self._current_session.cookies[cookie['name']]
         self._current_session.cookies.set(**cookie)
 
@@ -102,11 +101,9 @@ class AuthenticatedHttpClient(HttpClient):
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
-            s = requests.Session()
-            s.trust_env = False
-            resp = s.get(url, headers=headers)
-            s.close()
-            return resp.json()
+            resp = await self._session.request("GET", url, headers=headers)
+            resp_text = await resp.json()
+            return resp_text
         except Exception as e:
             log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)

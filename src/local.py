@@ -42,7 +42,8 @@ class LocalClient:
             dir, type = QueryValueEx(key, "InstallLocation")
             return dir
         except WindowsError:
-            log.debug("ROCKSTAR_GAME_NOT_INSTALLED: The game with ID " + title_id + " is not installed.")
+            # log.debug("ROCKSTAR_GAME_NOT_INSTALLED: The game with ID " + title_id + " is not installed.") - Reduce
+            # Console Spam (Enable this if you need to.)
             return None
 
     async def launch_game_from_title_id(self, title_id):
