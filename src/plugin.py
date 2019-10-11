@@ -1,7 +1,7 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
 from galaxy.api.consts import Platform
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo
-from galaxy.api.errors import InvalidCredentials
+from galaxy.api.errors import InvalidCredentials, AuthenticationRequired
 
 from file_read_backwards import FileReadBackwards
 import asyncio
@@ -11,7 +11,7 @@ import os
 import pickle
 import sys
 
-from consts import AUTH_PARAMS
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id
 from http_client import AuthenticatedHttpClient
 from local import LocalClient, check_if_process_exists
@@ -27,7 +27,7 @@ class RockstarPlugin(Plugin):
         self.total_games_cache = self.create_total_games_cache()
         self.friends_cache = []
         self.owned_games_cache = []
-        self.local_games_cache = []
+        self.local_games_cache = {}
         self.running_games_pids = {}
         self.game_is_loading = True
         self.checking_for_new_games = False
@@ -100,6 +100,9 @@ class RockstarPlugin(Plugin):
         return cache
 
     async def get_friends(self):
+        # This method is currently causing the plugin to crash after its second call. I am unsure of why this is
+        # happening, but it needs to be fixed.
+
         # NOTE: This will return a list of type FriendInfo.
         # The Social Club website returns a list of the current user's friends through the url
         # https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&pageIndex=0&pageSize=30.
@@ -164,10 +167,7 @@ class RockstarPlugin(Plugin):
         #   Steam/Retail games.
         #   -If it is not possible to use the launcher log, then just use the list provided by the website.
         if not self.is_authenticated():
-            for key, value in games_cache.items():
-                self.remove_game(value['rosTitleId'])
-            self.owned_games_cache = []
-            return
+            raise AuthenticationRequired()
 
         # Get the list of games_played from https://www.rockstargames.com/auth/get-user.json.
         owned_title_ids = []
@@ -184,14 +184,65 @@ class RockstarPlugin(Plugin):
             online_check_success = False
 
         # The log is in the Documents folder.
-        log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher.log")
-        log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+        current_log_count = 0
+        log_file = None
+        log_file_append = ""
+        # The Rockstar Games Launcher generates 10 log files before deleting them in a FIFO fashion. Old log files are
+        # given a number ranging from 1 to 9 in their name. In case the first log file does not have all of the games,
+        # we need to check the other log files, if possible.
+        while current_log_count < 10:
+            try:
+                if current_log_count != 0:
+                    log_file_append = ".0" + str(current_log_count)
+                log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher" + log_file_append
+                                        + ".log")
+                log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+                owned_title_ids = await self.parse_log_file(log_file, owned_title_ids, online_check_success)
+                break
+            except NoGamesInLogException:
+                log.warning("ROCKSTAR_LOG_WARNING: There are no owned games listed in " + str(log_file) + ". Moving to "
+                            "the next log file...")
+                current_log_count += 1
+            except NoLogFoundException:
+                log.warning("ROCKSTAR_LAST_LOG_REACHED: There are no more log files that can be found and/or read " 
+                            "from. Assuming that the online list is correct...")
+                break
+            except Exception:
+                # This occurs after ROCKSTAR_LOG_ERROR.
+                break
+        if current_log_count == 10:
+            log.warning("ROCKSTAR_LAST_LOG_REACHED: There are no more log files that can be found and/or read "
+                        "from. Assuming that the online list is correct...")
+        remove_all = False
+        if len(self.owned_games_cache) == 0:
+            remove_all = True
+        for title_id in owned_title_ids:
+            game = self.create_game_from_title_id(title_id)
+            if game not in self.owned_games_cache:
+                log.debug("ROCKSTAR_ADD_GAME: Adding " + title_id + " to owned games cache...")
+                self.owned_games_cache.append(game)
+        if remove_all is True:
+            for key, value in games_cache.items():
+                if key not in owned_title_ids:
+                    log.debug("ROCKSTAR_REMOVE_GAME: Removing " + key + " from owned games cache...")
+                    self.remove_game(value['rosTitleId'])
+        else:
+            for game in self.owned_games_cache:
+                if get_game_title_id_from_ros_title_id(game.game_id) not in owned_title_ids:
+                    log.debug("ROCKSTAR_REMOVE_GAME: Removing " + get_game_title_id_from_ros_title_id(game.game_id) +
+                              " from owned games cache...")
+                    self.remove_game(game.game_id)
+                    self.owned_games_cache.remove(game)
+        return self.owned_games_cache
+
+    @staticmethod
+    async def parse_log_file(log_file, owned_title_ids, online_check_success):
+        owned_title_ids_ = owned_title_ids
         checked_games_count = 0
         total_games_count = len(games_cache)
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
                 while checked_games_count < total_games_count:
-                    line = None
                     try:
                         line = frb.readline()
                     except UnicodeDecodeError:
@@ -199,14 +250,15 @@ class RockstarPlugin(Plugin):
                                     + line + ". Continuing to next line...")
                         continue
                     except Exception as e:
-                        log.error("ROCKSTAR_LOG_ERROR: Reading " + line + " from the log file resulted in the "  
+                        log.error("ROCKSTAR_LOG_ERROR: Reading " + line + " from the log file resulted in the "
                                   "exception " + repr(e) + " being thrown. Using the online list... (Please report "
                                   "this issue on the plugin's GitHub page!)")
-                        break
-                    if line is None:
+                        raise
+                    if not line:
                         log.error("ROCKSTAR_LOG_FINISHED_ERROR: The entire log file was read, but all of the games "
                                   "could not be accounted for. Proceeding to import the games that have been "
                                   "confirmed...")
+                        raise NoGamesInLogException()
                     # We need to do two main things with the log file:
                     # 1. If a game is present in owned_title_ids but not owned according to the log file, then it is
                     #    assumed to be a non-Launcher game, and is removed from the list.
@@ -220,45 +272,33 @@ class RockstarPlugin(Plugin):
                         # soon.
                         title_id = line[65:75].strip()
                         log.debug("ROCKSTAR_LOG_GAME: The game with title ID " + title_id + " is owned!")
-                        if title_id not in owned_title_ids:
+                        if title_id not in owned_title_ids_:
                             if online_check_success is True:
                                 # Case 2: The game is owned, but has not been played.
                                 log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
                                             " is owned, but it has never been played!")
-                            owned_title_ids.append(title_id)
+                            owned_title_ids_.append(title_id)
                         checked_games_count += 1
                     elif "no branches!" in line:
                         title_id = line[65:75].strip()
-                        if title_id in owned_title_ids:
+                        if title_id in owned_title_ids_:
                             # Case 1: The game is not actually owned on the launcher.
                             log.warning("ROCKSTAR_FAKE_GAME: The game with title ID " + title_id + " is not owned on "
                                         "the Rockstar Games Launcher!")
-                            owned_title_ids.remove(title_id)
+                            owned_title_ids_.remove(title_id)
                         checked_games_count += 1
                     if checked_games_count == total_games_count:
                         break
-                for title_id in owned_title_ids:
-                    game = self.create_game_from_title_id(title_id)
-                    if game not in self.owned_games_cache:
-                        self.owned_games_cache.append(game)
-            for key, value in games_cache.items():
-                if key not in owned_title_ids:
-                    self.remove_game(value['rosTitleId'])
-            return self.owned_games_cache
+            return owned_title_ids_
         else:
-            log.warning("ROCKSTAR_LOG_WARNING: The log file could not be found and/or read from. Assuming that the "
-                        "online list is correct...")
-            for title_id in owned_title_ids:
-                game = self.create_game_from_title_id(title_id)
-                if game not in self.owned_games_cache:
-                    self.owned_games_cache.append(game)
-            for key, value in games_cache.items():
-                if key not in owned_title_ids:
-                    self.remove_game(value['rosTitleId'])
-            return self.owned_games_cache
+            raise NoLogFoundException()
 
     async def get_local_games(self):
-        local_games = []
+        # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value that
+        # needs to be returned. However, for internal use (the self.local_games_cache field), the dictionary local_games
+        # is used for greater flexibility.
+        local_games = {}
+        local_list = []
         for game in self.total_games_cache:
             title_id = get_game_title_id_from_ros_title_id(str(game.game_id))
             check = self._local_client.get_path_to_game(title_id)
@@ -268,12 +308,13 @@ class RockstarPlugin(Plugin):
                     local_game = self.create_local_game_from_title_id(title_id, True, True)
                 else:
                     local_game = self.create_local_game_from_title_id(title_id, False, True)
-                local_games.append(local_game)
             else:
-                local_games.append(self.create_local_game_from_title_id(title_id, False, False))
+                local_game = self.create_local_game_from_title_id(title_id, False, False)
+            local_games[title_id] = local_game
+            local_list.append(local_game)
         self.local_games_cache = local_games
         log.debug("ROCKSTAR_INSTALLED_GAMES: " + str(local_games))
-        return local_games
+        return local_list
 
     async def check_for_new_games(self):
         self.checking_for_new_games = True
@@ -288,8 +329,16 @@ class RockstarPlugin(Plugin):
 
     async def check_game_statuses(self):
         self.updating_game_statuses = True
-        for local_game in await self.get_local_games():
-            self.update_local_game_status(local_game)
+        old_local_game_cache = self.local_games_cache
+        await self.get_local_games()
+        for title_id, local_game in self.local_games_cache.items():
+            if (local_game.local_game_state !=
+                    (old_local_game_cache[title_id]).local_game_state):
+                log.debug("ROCKSTAR_LOCAL_CHANGE: The status for " + title_id + " has changed.")
+                self.update_local_game_status(local_game)
+        #   else:
+        #       log.debug("ROCKSTAR_LOCAL_REMAIN: The status for " + title_id + " has not changed.") - Reduce Console
+        #       Spam (Enable this if you need to.)
         await asyncio.sleep(5)
         self.updating_game_statuses = False
 
@@ -326,6 +375,8 @@ class RockstarPlugin(Plugin):
             return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.None_)
 
     def tick(self):
+        if not self.is_authenticated():
+            return
         if not self.checking_for_new_games:
             log.debug("Checking for new games...")
             asyncio.create_task(self.check_for_new_games())

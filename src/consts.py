@@ -18,3 +18,10 @@ AUTH_PARAMS = {
     "end_uri_regex": r"https://www.rockstargames.com/auth/get-user.json.*"
 }
 
+
+class NoLogFoundException(Exception):
+    pass
+
+
+class NoGamesInLogException(Exception):
+    pass

@@ -40,6 +40,8 @@ class AuthenticatedHttpClient(HttpClient):
         self._auth_lost_callback = None
         self._current_auth_token = None
         self._first_auth = True
+        # The variable self._is_busy is meant to prevent race conditions. Namely,
+        self._is_busy = False
         super().__init__(cookie_jar=self._cookie_jar)
 
     def get_credentials(self):
@@ -98,19 +100,20 @@ class AuthenticatedHttpClient(HttpClient):
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
         if include_default_headers:
-            headers["Authorization"] = f"Bearer {self.bearer}"
+            headers["Authorization"] = f"Bearer {await self._get_bearer()}"
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
             s = requests.Session()
             s.trust_env = False
             resp = s.get(url, headers=headers)
+            s.close()
             return resp.json()
         except Exception as e:
             log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)
             await self.authenticate()
-            return self.get_json_from_request_strict(url)
+            return self.get_json_from_request_strict(url, include_default_headers, additional_headers)
 
     async def get_bearer_from_cookie_jar(self):
         morsel_list = self._cookie_jar.__iter__()
@@ -200,21 +203,12 @@ class AuthenticatedHttpClient(HttpClient):
 
         # Finally, this last request updates the cookies that are used for further authentication.
 
-        # NOTE: This implementation probably is not working correctly, since Requests does not support JavaScript.
+        # NOTE: This implementation is not working correctly, since Requests does not support JavaScript.
         # The only implementation that I can think of would be to use Selenium and a headless browser, but that would
         # require the user to constantly update their browser driver as their browser gets updated.
         # Either that, or we do what was done with the Battle.net integration and fake the authentication after the
         # token expires (although that would almost certainly break features or lead to outdated cached information).
-        working_dict = self._current_session.cookies.get_dict()
-        old_auth_token = working_dict['ScAuthTokenData']
-        log.debug("ROCKSTAR_OLD_AUTH: " + str(old_auth_token))
-        headers = {
-            "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
-                       "application/signed-exchange;v=b3"),
-            "Cookie": await self.get_cookies_for_headers(),
-            "User-Agent": USER_AGENT
-        }
-        self._current_session.get("https://www.rockstargames.com", headers=headers)
+        pass
 
     async def authenticate(self):
         if self._auth_lost_callback:
