@@ -97,7 +97,7 @@ class AuthenticatedHttpClient(HttpClient):
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
         if include_default_headers:
-            headers["Authorization"] = f"Bearer {self.bearer}"
+            headers["Authorization"] = f"Bearer {await self._get_bearer()}"
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
