@@ -3,6 +3,7 @@ from galaxy.api.consts import Platform
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired
 
+from concurrent.futures import ThreadPoolExecutor
 from file_read_backwards import FileReadBackwards
 import asyncio
 import ctypes.wintypes
@@ -115,12 +116,7 @@ class RockstarPlugin(Plugin):
         # We first need to get the number of friends.
         url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                "pageIndex=0&pageSize=30")
-        try:
-            current_page = await asyncio.wait_for(self._http_client.get_json_from_request_strict(url), timeout=30.0)
-        except asyncio.TimeoutError:
-            log.error("ROCKSTAR_FRIENDS_ERROR: The request to import the friends list has timed out. Returning cached "
-                      "friends list...")
-            return self.friends_cache
+        current_page = await self._http_client.get_json_from_request_strict(url)
         log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
         num_friends = current_page['rockstarAccountList']['totalFriends']
         num_pages_required = num_friends / 30 if num_friends % 30 != 0 else (num_friends / 30) - 1
@@ -145,19 +141,11 @@ class RockstarPlugin(Plugin):
             for i in range(1, int(num_pages_required + 1)):
                 url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                        "pageIndex=" + str(i) + "&pageSize=30")
-                try:
-                    return_list.append(friend for friend in await self._get_friends(url))
-                except asyncio.TimeoutError:
-                    return self.friends_cache
+                return_list.append(friend for friend in await self._get_friends(url))
         return return_list
 
     async def _get_friends(self, url):
-        try:
-            current_page = await asyncio.wait_for(self._http_client.get_json_from_request_strict(url), timeout=30.0)
-        except asyncio.TimeoutError:
-            log.error("ROCKSTAR_FRIENDS_ERROR: The request to import the friends list has timed out. Returning cached "
-                      "friends list...")
-            raise
+        current_page = self._http_client.get_json_from_request_strict(url)
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):

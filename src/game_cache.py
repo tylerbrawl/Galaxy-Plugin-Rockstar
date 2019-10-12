@@ -13,6 +13,7 @@ games_cache = {
         "rosTitleId": 18,
         "onlineTitleId": 31,
         "launchEXE": "gta_sa.exe",
+        "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "gta5": {
@@ -21,6 +22,7 @@ games_cache = {
         "rosTitleId": 11,
         "onlineTitleId": 241,
         "launchEXE": "GTA5.exe",
+        "achievementId": "gtav",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "lanoire": {
@@ -29,6 +31,7 @@ games_cache = {
         "rosTitleId": 9,
         "onlineTitleId": 35,
         "launchEXE": "LANoire.exe",
+        "achievementId": "lan",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "mp3": {
@@ -37,6 +40,7 @@ games_cache = {
         "rosTitleId": 10,
         "onlineTitleId": 40,
         "launchEXE": "MaxPayne3.exe",
+        "achievementId": "mp3",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     # "lanoirevr": {
@@ -45,6 +49,7 @@ games_cache = {
     #    "rosTitleId": 24,
     #    "onlineTitleId": 35,  # For some reason, this is the same as L.A. Noire's ID.
     #    "launchEXE": "LANoireVR.exe",
+    #    "achievementId": "lanvr",
     #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     # },
     "gta3": {
@@ -53,6 +58,7 @@ games_cache = {
         "rosTitleId": 26,
         "onlineTitleId": 24,
         "launchEXE": "gta3.exe",
+        "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "gtavc": {
@@ -61,6 +67,7 @@ games_cache = {
         "rosTitleId": 27,
         "onlineTitleId": 33,
         "launchEXE": "gta-vc.exe",
+        "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "bully": {
@@ -69,6 +76,8 @@ games_cache = {
         "rosTitleId": 23,
         "onlineTitleId": 19,
         "launchEXE": "Bully.exe",
+        "achievementId": None,  # The Social Club website lists Bully as having achievements, but it is only for the
+        # mobile version of the game.
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
     },
     "rdr2": {
@@ -77,6 +86,8 @@ games_cache = {
         "rosTitleId": 13,
         "onlineTitleId": 912,
         "launchEXE": "RDR2.exe",
+        "achievementId": "rdr2",  # The achievements link for Red Dead Redemption 2 is currently unavailable, as the
+        # game has not been released yet.
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
         "isPreOrder": True
     }
@@ -92,18 +103,6 @@ def get_game_title_id_from_ros_title_id(ros_title_id):
             return game
     return None
 
-    # switch = {
-    #    '18': "gtasa",
-    #    '11': "gta5",
-    #    '9': "lanoire",
-    #    '10': "mp3",
-    #   #24: "lanoirevr",
-    #    '26': "gta3",
-    #    '27': "gtavc",
-    #    '23': "bully"
-    # }
-    # return switch[rosTitleId]
-
 
 def get_game_title_id_from_online_title_id(online_title_id):
     # The onlineTitleId value is used to uniquely identify each game across Rockstar's various websites, including
@@ -113,3 +112,11 @@ def get_game_title_id_from_online_title_id(online_title_id):
         if d["onlineTitleId"] == int(online_title_id):
             return game
     return None
+
+
+def get_achievement_id_from_ros_title_id(ros_title_id):
+    # The achievementId value is used by the Social Club API to uniquely identify games. Here, it is used to get the
+    # list of a game's achievements, as well as a user's unlocked achievements.
+    for game, d in games_cache.items():
+        if d["rosTitleId"] == int(ros_title_id):
+            return games_cache[game]["achievementId"]

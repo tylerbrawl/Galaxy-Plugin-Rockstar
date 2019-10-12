@@ -97,18 +97,18 @@ class AuthenticatedHttpClient(HttpClient):
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
         if include_default_headers:
-            headers["Authorization"] = f"Bearer {await self._get_bearer()}"
+            headers["Authorization"] = f"Bearer {self.bearer}"
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
-            resp = await self._session.request("GET", url, headers=headers)
-            resp_text = await resp.json()
-            return resp_text
+            s = requests.Session()
+            resp = s.get(url, headers=headers)
+            return resp.json()
         except Exception as e:
             log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)
             await self.authenticate()
-            return self.get_json_from_request_strict(url, include_default_headers, additional_headers)
+            return await self.get_json_from_request_strict(url, include_default_headers, additional_headers)
 
     async def get_bearer_from_cookie_jar(self):
         morsel_list = self._cookie_jar.__iter__()
@@ -138,7 +138,7 @@ class AuthenticatedHttpClient(HttpClient):
                 "user-agent": USER_AGENT
             }
             resp = self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
-                                             allow_redirects=False)
+                                             allow_redirects=False, timeout=5)
             new_auth = self._current_session.cookies['ScAuthTokenData']
             log.debug("ROCKSTAR_NEW_AUTH: " + str(new_auth))
             self._current_auth_token = new_auth
@@ -157,7 +157,6 @@ class AuthenticatedHttpClient(HttpClient):
             raise
 
     async def _get_bearer(self):
-        log.debug("ROCKSTAR_COOKIES: " + await self.get_cookies_for_headers())
         try:
             resp_json = await self._get_user_json()
             log.debug("ROCKSTAR_AUTH_JSON: " + str(resp_json))
