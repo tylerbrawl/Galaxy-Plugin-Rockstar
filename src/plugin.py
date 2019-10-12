@@ -3,7 +3,6 @@ from galaxy.api.consts import Platform
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired
 
-from concurrent.futures import ThreadPoolExecutor
 from file_read_backwards import FileReadBackwards
 import asyncio
 import ctypes.wintypes
