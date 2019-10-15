@@ -76,6 +76,9 @@ class AuthenticatedHttpClient(HttpClient):
     def get_named_cookie(self, cookie_name):
         return self._current_session.cookies[cookie_name]
 
+    def get_rockstar_id(self):
+        return self.user["rockstar_id"]
+
     def create_session(self, stored_credentials):
         if stored_credentials is None:
             self._current_session = requests.Session()
