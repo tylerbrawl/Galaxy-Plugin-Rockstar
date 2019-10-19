@@ -10,9 +10,10 @@ import datetime
 import logging as log
 import os
 import pickle
+import re
 import sys
 
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException
+from consts import AUTH_PARAMS, FP_PARAMS, NoGamesInLogException, NoLogFoundException, FINGERPRINT_JS
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import AuthenticatedHttpClient
@@ -22,7 +23,7 @@ from version import __version__
 
 class RockstarPlugin(Plugin):
     def __init__(self, reader, writer, token):
-        super().__init__(Platform.RiotGames, __version__, reader, writer, token)
+        super().__init__(Platform.Rockstar, __version__, reader, writer, token)
         self.games_cache = games_cache
         self._http_client = AuthenticatedHttpClient(self.store_credentials)
         self._local_client = LocalClient()
@@ -65,13 +66,14 @@ class RockstarPlugin(Plugin):
                 }
                 self._http_client.update_cookie(cookie_object)
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
+            self._http_client.set_fingerprint(stored_credentials['fingerprint'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
         except Exception as e:
             log.warning("ROCKSTAR_AUTH_WARNING: The exception " + repr(e) + " was thrown, presumably because of "
                         "outdated credentials. Attempting to get new credentials...")
-            self._http_client.set_auth_lost_callback(self.lost_authentication)
+            self._http_client.set_auth_lost_callback(True)
             try:
                 user = await self._http_client.authenticate()
                 return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
@@ -85,6 +87,17 @@ class RockstarPlugin(Plugin):
         for cookie in cookies:
             if cookie['name'] == "ScAuthTokenData":
                 self._http_client.set_current_auth_token(cookie['value'])
+            if cookie['name'] == "RMT":
+                log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                self._http_client.set_refresh_token(cookie['value'])
+            if cookie['name'] == "fingerprint":
+                log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
+                self._http_client.set_fingerprint(cookie['value'].replace("$", ";"))
+                # We will not add the fingerprint as a cookie to the session; it will instead be stored with the user's
+                # credentials.
+                continue
+            if re.search("^rsso", cookie['name']):
+                log.debug("ROCKSTAR_RSSO: Got " + cookie['name'] + ": " + cookie['value'])
             cookie_object = {
                 "name": cookie['name'],
                 "value": cookie['value'],
@@ -100,6 +113,7 @@ class RockstarPlugin(Plugin):
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):
+        self._http_client.set_auth_lost_callback(True)
         await self._http_client.close()
 
     def create_total_games_cache(self):
@@ -114,7 +128,8 @@ class RockstarPlugin(Plugin):
         # unlocked achievements for the specified game. It uses the Social Club standard for authentication (a request
         # header named Authorization containing "Bearer [Bearer-Token]").
 
-        if games_cache[get_game_title_id_from_ros_title_id(game_id)]["achievementId"] is None:
+        if games_cache[get_game_title_id_from_ros_title_id(game_id)]["achievementId"] is None or \
+                (games_cache[get_game_title_id_from_ros_title_id(game_id)]["isPreOrder"]):
             return []
         log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
                   get_game_title_id_from_ros_title_id(game_id) + " (Achievement ID: " +

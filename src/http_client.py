@@ -3,13 +3,33 @@ from galaxy.http import HttpClient
 from consts import USER_AGENT
 
 import aiohttp
+import dataclasses
 import dateutil.tz
 import datetime
 import logging as log
 import pickle
+import re
 import requests
 import traceback
+
+from time import time
 from yarl import URL
+
+
+@dataclasses.dataclass
+class Token(object):
+    _token = None
+    _expires = None
+
+    def set_token(self, token, expiration):
+        self._token, self._expires = token, expiration
+
+    def get_token(self):
+        return self._token
+
+    @property
+    def expired(self):
+        return self._expires <= time()
 
 
 class CookieJar(aiohttp.CookieJar):
@@ -30,7 +50,8 @@ class AuthenticatedHttpClient(HttpClient):
     def __init__(self, store_credentials):
         self._store_credentials = store_credentials
         self.bearer = None
-        self.refresh = None
+        self.refresh_token = Token()
+        self._fingerprint = None
         self.user = None
         local_time_zone = dateutil.tz.tzlocal()
         self._utc_offset = local_time_zone.utcoffset(datetime.datetime.now(local_time_zone)).total_seconds() / 60
@@ -52,12 +73,20 @@ class AuthenticatedHttpClient(HttpClient):
         # if the two sessions have equivalent cookies.
         creds['session_object'] = pickle.dumps(self._current_session).hex()
         creds['current_auth_token'] = self._current_auth_token
+        creds['fingerprint'] = self._fingerprint
         return creds
 
     def set_cookies_updated_callback(self, callback):
         self._cookie_jar.set_cookies_updated_callback(callback)
 
     def update_cookie(self, cookie):
+        # I believe that the cookie beginning with rsso gets a different name occasionally, so we need to delete the old
+        # rsso cookie using regular expressions if we want to ensure that the refresh token can continue to be obtained.
+        if re.search("^rsso", cookie['name']):
+            for old_cookie in self._current_session.cookies:
+                old_rsso_search = re.search("^rsso", old_cookie.name)
+                if old_rsso_search:
+                    del self._current_session.cookies[old_rsso_search.string]
         del self._current_session.cookies[cookie['name']]
         self._current_session.cookies.set(**cookie)
 
@@ -78,6 +107,22 @@ class AuthenticatedHttpClient(HttpClient):
 
     def get_rockstar_id(self):
         return self.user["rockstar_id"]
+
+    def set_refresh_token(self, token):
+        expiration_time = time() + (3600 * 24 * 365 * 20)
+        self.refresh_token.set_token(token, expiration_time)
+
+    def get_refresh_token(self):
+        if self.refresh_token.expired:
+            log.debug("ROCKSTAR_REFRESH_EXPIRED: The refresh token has expired!")
+            self.refresh_token.set_token(None, None)
+        return self.refresh_token.get_token()
+
+    def set_fingerprint(self, fingerprint):
+        self._fingerprint = fingerprint
+
+    def is_fingerprint_defined(self):
+        return self._fingerprint is not None
 
     def create_session(self, stored_credentials):
         if stored_credentials is None:
@@ -186,16 +231,11 @@ class AuthenticatedHttpClient(HttpClient):
             raise
 
     async def refresh_credentials(self):
-        # Perhaps the below idea is over-complicating things. What if we just connect to https://www.rockstargames.com
-        # and let this request update the cookies? The below requests are made automatically by the normal browser.
-        # Although they are not implemented, the below requests will be kept as documentation in case they are indeed
-        # needed.
-
         # It seems like the Rockstar website connects to https://signin.rockstargames.com/connect/cors/check/rsg via a
         # POST request in order to re-authenticate the user. This request uses a fingerprint as form data.
 
         # This POST request then returns a message with a code, which is then sent as a request payload to
-        # https://www.rockstargames.com/auth/login.json in the form or {code: "{code}"}. Note that {code} includes
+        # https://www.rockstargames.com/auth/login.json in the form of {code: "{code}"}. Note that {code} includes
         # its own set of quotation marks, so it looks like {code: ""{Numbers/Letters}""}.
 
         # Finally, this last request updates the cookies that are used for further authentication.

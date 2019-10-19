@@ -14,7 +14,8 @@ games_cache = {
         "onlineTitleId": 31,
         "launchEXE": "gta_sa.exe",
         "achievementId": None,
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "gta5": {
         "friendlyName": "Grand Theft Auto V",
@@ -23,7 +24,8 @@ games_cache = {
         "onlineTitleId": 241,
         "launchEXE": "GTA5.exe",
         "achievementId": "gtav",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "lanoire": {
         "friendlyName": "L.A. Noire: Complete Edition",
@@ -32,7 +34,8 @@ games_cache = {
         "onlineTitleId": 35,
         "launchEXE": "LANoire.exe",
         "achievementId": "lan",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "mp3": {
         "friendlyName": "Max Payne 3",
@@ -41,7 +44,8 @@ games_cache = {
         "onlineTitleId": 40,
         "launchEXE": "MaxPayne3.exe",
         "achievementId": "mp3",
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     # "lanoirevr": {
     #    "friendlyName": "L.A. Noire: The VR Case Files",
@@ -50,7 +54,8 @@ games_cache = {
     #    "onlineTitleId": 35,  # For some reason, this is the same as L.A. Noire's ID.
     #    "launchEXE": "LANoireVR.exe",
     #    "achievementId": "lanvr",
-    #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+    #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+    #    "isPreOrder": False
     # },
     "gta3": {
         "friendlyName": "Grand Theft Auto III",
@@ -59,7 +64,8 @@ games_cache = {
         "onlineTitleId": 24,
         "launchEXE": "gta3.exe",
         "achievementId": None,
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "gtavc": {
         "friendlyName": "Grand Theft Auto: Vice City",
@@ -68,7 +74,8 @@ games_cache = {
         "onlineTitleId": 33,
         "launchEXE": "gta-vc.exe",
         "achievementId": None,
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "bully": {
         "friendlyName": "Bully: Scholarship Edition",
@@ -78,7 +85,8 @@ games_cache = {
         "launchEXE": "Bully.exe",
         "achievementId": None,  # The Social Club website lists Bully as having achievements, but it is only for the
         # mobile version of the game.
-        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase)
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     },
     "rdr2": {
         "friendlyName": "Red Dead Redemption 2",
