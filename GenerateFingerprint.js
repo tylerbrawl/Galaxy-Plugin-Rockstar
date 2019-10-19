@@ -46,8 +46,10 @@ setTimeout(function() {
 				fpString += ',';
 		}
         fpString += '}}';
-        alert('Fingerprint: ' + fpString);
-        document.cookie = ('fingerprint=' + fpString); //+ '; expires=' + expiry + '; path=/';
+	
+	//Galaxy 2.0's cookie extraction cuts off the name of the cookie after the first semicolon (;), so all occurrences of semicolons
+	//will be temporarily replaced with dollar signs ($), as I have yet to see this character used in a fingerprint.
+        document.cookie = ('fingerprint=' + fpString.replace(/;/g, "$")); //+ '; expires=' + expiry + '; path=/';
 	});
 }, 500);
 
