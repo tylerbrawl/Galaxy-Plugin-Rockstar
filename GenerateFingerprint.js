@@ -3,14 +3,6 @@ window.onerror = function (msg, url, lineNum) {
     return false;
 }
 
-var fpImport = document.createElement('script');
-fpImport.src = 'https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/fingerprint2.js';
-document.head.appendChild(fpImport);
-
-var hashImport = document.createElement('script');
-hashImport.src = 'https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/HashGen.js';
-document.head.appendChild(hashImport);
-
 var options = {
 	swfContainerId: 'fingerprintjs2',
 	swfPath: 'flash/compiled/FontList.swf',
