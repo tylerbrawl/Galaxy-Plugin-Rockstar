@@ -13,7 +13,7 @@ import pickle
 import re
 import sys
 
-from consts import AUTH_PARAMS, FP_PARAMS, NoGamesInLogException, NoLogFoundException, FINGERPRINT_JS
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import AuthenticatedHttpClient
