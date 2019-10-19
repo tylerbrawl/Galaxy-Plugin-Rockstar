@@ -4,11 +4,11 @@ window.onerror = function (msg, url, lineNum) {
 }
 
 var fpImport = document.createElement('script');
-fpImport.src = './fingerprint2.js';
+fpImport.src = 'https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/fingerprint2.js';
 document.head.appendChild(fpImport);
 
 var hashImport = document.createElement('script');
-hashImport.src = './HashGen.js';
+hashImport.src = 'https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/HashGen.js';
 document.head.appendChild(hashImport);
 
 var options = {
