@@ -513,7 +513,7 @@
       }, 1);
       },
       deviceNameKey: function (keys) {
-          if(navigator.appVersion.indexOf("Win") != -1)
+          if(navigator.platform == "Win32")
             keys.push({ key: "device_name", value: "Chrome on Windows" });
           else
             keys.push({ key: "device_name", value: "Chrome on Mac" });
