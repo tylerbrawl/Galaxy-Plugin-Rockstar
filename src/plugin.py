@@ -26,7 +26,7 @@ class RockstarPlugin(Plugin):
         super().__init__(Platform.Rockstar, __version__, reader, writer, token)
         self.games_cache = games_cache
         self._http_client = AuthenticatedHttpClient(self.store_credentials)
-        self._local_client = LocalClient()
+        self._local_client = None
         self.total_games_cache = self.create_total_games_cache()
         self._all_achievements_cache = {}
         self.friends_cache = []
@@ -36,9 +36,12 @@ class RockstarPlugin(Plugin):
         self.game_is_loading = True
         self.checking_for_new_games = False
         self.updating_game_statuses = False
-        self.buffer = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-        ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, self.buffer)
-        self.documents_location = self.buffer.value
+        self.buffer = None
+        if OPERATING_SYSTEM == "Windows":
+            self._local_client = LocalClient()
+            self.buffer = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+            ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, self.buffer)
+            self.documents_location = self.buffer.value
 
     def is_authenticated(self):
         return self._http_client.is_authenticated()
@@ -408,6 +411,8 @@ class RockstarPlugin(Plugin):
         self.checking_for_new_games = False
 
     async def check_game_statuses(self):
+        if OPERATING_SYSTEM != "Windows":
+            pass
         self.updating_game_statuses = True
         old_local_game_cache = self.local_games_cache
         await self.get_local_games()
@@ -473,7 +478,7 @@ class RockstarPlugin(Plugin):
         if not self.checking_for_new_games:
             log.debug("Checking for new games...")
             asyncio.create_task(self.check_for_new_games())
-        if not self.updating_game_statuses:
+        if not self.updating_game_statuses and OPERATING_SYSTEM == "Windows":
             log.debug("Checking local game statuses...")
             asyncio.create_task(self.check_game_statuses())
 
