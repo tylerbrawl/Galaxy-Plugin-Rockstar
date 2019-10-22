@@ -13,7 +13,7 @@ import pickle
 import re
 import sys
 
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, OPERATING_SYSTEM
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import AuthenticatedHttpClient
@@ -317,6 +317,8 @@ class RockstarPlugin(Plugin):
 
     @staticmethod
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
+        if OPERATING_SYSTEM != "Windows":
+            raise NoLogFoundException()
         owned_title_ids_ = owned_title_ids
         checked_games_count = 0
         total_games_count = len(games_cache)
@@ -374,6 +376,9 @@ class RockstarPlugin(Plugin):
             raise NoLogFoundException()
 
     async def get_local_games(self):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value that
         # needs to be returned. However, for internal use (the self.local_games_cache field), the dictionary local_games
         # is used for greater flexibility.
@@ -418,6 +423,9 @@ class RockstarPlugin(Plugin):
         self.updating_game_statuses = False
 
     async def launch_game(self, game_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         title_id = get_game_title_id_from_ros_title_id(game_id)
         self.running_games_pids[title_id] = [await self._local_client.launch_game_from_title_id(title_id), True]
         log.debug("ROCKSTAR_PIDS: " + str(self.running_games_pids))
@@ -425,6 +433,9 @@ class RockstarPlugin(Plugin):
             self.update_local_game_status(LocalGame(game_id, LocalGameState.Running | LocalGameState.Installed))
 
     async def install_game(self, game_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         title_id = get_game_title_id_from_ros_title_id(game_id)
         log.debug("ROCKSTAR_INSTALL_REQUEST: Requesting to install " + title_id + "...")
         self._local_client.install_game_from_title_id(title_id)
@@ -435,6 +446,9 @@ class RockstarPlugin(Plugin):
         self.update_local_game_status(LocalGame(game_id, LocalGameState.Installed))
 
     async def uninstall_game(self, game_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         title_id = get_game_title_id_from_ros_title_id(game_id)
         log.debug("ROCKSTAR_UNINSTALL_REQUEST: Requesting to uninstall " + title_id + "...")
         self._local_client.uninstall_game_from_title_id(title_id)

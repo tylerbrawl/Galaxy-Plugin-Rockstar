@@ -4,7 +4,7 @@ import logging as log
 import subprocess
 import asyncio
 
-from consts import WINDOWS_UNINSTALL_KEY
+from consts import WINDOWS_UNINSTALL_KEY, OPERATING_SYSTEM
 from game_cache import games_cache
 
 
@@ -25,6 +25,9 @@ class LocalClient:
         self.get_local_launcher_path()
 
     def get_local_launcher_path(self):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         try:
             if not self.installer_location:
                 # The uninstall key for the launcher is called Rockstar Games Launcher.
@@ -37,6 +40,9 @@ class LocalClient:
             return None
 
     def get_path_to_game(self, title_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         try:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + games_cache[title_id]['guid'])
             dir, type = QueryValueEx(key, "InstallLocation")
@@ -47,7 +53,9 @@ class LocalClient:
             return None
 
     async def launch_game_from_title_id(self, title_id):
-
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         path = self.get_path_to_game(title_id)
         if not path:
             log.error("ROCKSTAR_LAUNCH_FAILURE: The game " + title_id + " could not be launched.")
@@ -76,12 +84,18 @@ class LocalClient:
             return pid
 
     def install_game_from_title_id(self, title_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         if not self.installer_location:
             return
         subprocess.call(self.installer_location + " -enableFullMode -install=" + title_id, stdout=self.FNULL,
                         stderr=self.FNULL, shell=False)
 
     def uninstall_game_from_title_id(self, title_id):
+        # The Rockstar Games Launcher is not available on macOS.
+        if OPERATING_SYSTEM != "Windows":
+            pass
         if not self.installer_location:
             return
         subprocess.call(self.installer_location + " -enableFullMode -uninstall=" + title_id, stdout=self.FNULL,
