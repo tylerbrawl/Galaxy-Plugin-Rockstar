@@ -285,7 +285,7 @@ class AuthenticatedHttpClient(HttpClient):
                 "Referer": "https://www.rockstargames.com/",
                 "User-Agent": USER_AGENT
             }
-            data = {"code":refresh_code}
+            data = {"code": refresh_code}
             log.debug("ROCKSTAR_CODE: " + data['code'])
             final_request = self._current_session.post(url, json=data, headers=headers, timeout=5)
             log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
