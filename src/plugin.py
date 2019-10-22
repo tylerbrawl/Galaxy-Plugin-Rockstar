@@ -66,6 +66,8 @@ class RockstarPlugin(Plugin):
                 }
                 self._http_client.update_cookie(cookie_object)
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
+            self._http_client.set_refresh_token_absolute(
+                pickle.loads(bytes.fromhex(stored_credentials['refresh_token'])))
             self._http_client.set_fingerprint(stored_credentials['fingerprint'])
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
@@ -113,7 +115,6 @@ class RockstarPlugin(Plugin):
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):
-        self._http_client.set_auth_lost_callback(True)
         await self._http_client.close()
 
     def create_total_games_cache(self):

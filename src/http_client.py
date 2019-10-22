@@ -27,6 +27,9 @@ class Token(object):
     def get_token(self):
         return self._token
 
+    def get_expiration(self):
+        return self._expires
+
     @property
     def expired(self):
         return self._expires <= time()
@@ -48,6 +51,7 @@ class CookieJar(aiohttp.CookieJar):
 
 class AuthenticatedHttpClient(HttpClient):
     def __init__(self, store_credentials):
+        self._debug_always_refresh = False  # Set this to True if you are debugging ScAuthTokenData refreshing.
         self._store_credentials = store_credentials
         self.bearer = None
         self.refresh_token = Token()
@@ -73,6 +77,7 @@ class AuthenticatedHttpClient(HttpClient):
         # if the two sessions have equivalent cookies.
         creds['session_object'] = pickle.dumps(self._current_session).hex()
         creds['current_auth_token'] = self._current_auth_token
+        creds['refresh_token'] = pickle.dumps(self.refresh_token).hex()
         creds['fingerprint'] = self._fingerprint
         return creds
 
@@ -111,6 +116,9 @@ class AuthenticatedHttpClient(HttpClient):
     def set_refresh_token(self, token):
         expiration_time = time() + (3600 * 24 * 365 * 20)
         self.refresh_token.set_token(token, expiration_time)
+
+    def set_refresh_token_absolute(self, token):
+        self.refresh_token = token
 
     def get_refresh_token(self):
         if self.refresh_token.expired:
@@ -239,16 +247,63 @@ class AuthenticatedHttpClient(HttpClient):
         # its own set of quotation marks, so it looks like {code: ""{Numbers/Letters}""}.
 
         # Finally, this last request updates the cookies that are used for further authentication.
-
-        # NOTE: This implementation is not working correctly, since Requests does not support JavaScript.
-        # The only implementation that I can think of would be to use Selenium and a headless browser, but that would
-        # require the user to constantly update their browser driver as their browser gets updated.
-        # Either that, or we do what was done with the Battle.net integration and fake the authentication after the
-        # token expires (although that would almost certainly break features or lead to outdated cached information).
-        pass
+        try:
+            url = "https://signin.rockstargames.com/connect/cors/check/rsg"
+            rsso_cookie = {}
+            rsso_name = None
+            for cookie in self._current_session.cookies:
+                if re.search("^rsso", cookie.name):
+                    rsso_name = cookie.name
+                    rsso_cookie[cookie.name] = cookie.value
+            headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Cookie": "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_cookie[rsso_name],
+                "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Host": "signin.rockstargames.com",
+                "Origin": "https://www.rockstargames.com",
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            data = {"fingerprint": self._fingerprint}
+            refresh_resp = self._current_session.post(url, data=data, headers=headers, timeout=5)
+            refresh_code = refresh_resp.text
+            log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
+            # We need to set the new refresh token here, if it is updated.
+            self.set_refresh_token(self._current_session.cookies['RMT'])
+            # The Social Club API will not grant the user a new ScAuthTokenData token if they already have one that is
+            # relevant, so when refreshing the credentials, the old token is deleted here.
+            old_auth = self._current_session.cookies['ScAuthTokenData']
+            del self._current_session.cookies['ScAuthTokenData']
+            self._current_auth_token = None
+            log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
+            url = "https://www.rockstargames.com/auth/login.json"
+            headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Cookie": "TS019978c2=" + self._current_session.cookies['TS019978c2'],
+                "Content-type": "application/json",
+                "Host": "www.rockstargames.com",
+                "Referer": "https://www.rockstargames.com/",
+                "User-Agent": USER_AGENT
+            }
+            data = {"code":refresh_code}
+            log.debug("ROCKSTAR_CODE: " + data['code'])
+            final_request = self._current_session.post(url, json=data, headers=headers, timeout=5)
+            log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
+            final_json = final_request.json()
+            log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
+            new_auth = self._current_session.cookies['ScAuthTokenData']
+            self._current_auth_token = new_auth
+            log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
+            if old_auth != new_auth:
+                log.debug("ROCKSTAR_REFRESH_SUCCESS: The user has been successfully re-authenticated!")
+        except Exception as e:
+            log.debug("ROCKSTAR_REFRESH_FAILURE: The attempt to re-authenticate the user has failed with the exception "
+                      + repr(e) + ". Logging the user out...")
+            traceback.print_exc()
+            raise
 
     async def authenticate(self):
-        if self._auth_lost_callback:
+        if self._auth_lost_callback or self._debug_always_refresh:
             # We need to refresh the credentials.
             await self.refresh_credentials()
             self._auth_lost_callback = None
