@@ -273,6 +273,9 @@ class RockstarPlugin(Plugin):
         # given a number ranging from 1 to 9 in their name. In case the first log file does not have all of the games,
         # we need to check the other log files, if possible.
         while current_log_count < 10:
+            # We need to prevent the log file check for Mac users.
+            if OPERATING_SYSTEM != "Windows":
+                break
             try:
                 if current_log_count != 0:
                     log_file_append = ".0" + str(current_log_count)
