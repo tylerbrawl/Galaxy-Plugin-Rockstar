@@ -3,16 +3,12 @@ import sys
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
-PLUGIN_PATH_WINDOWS = os.getenv("LOCALAPPDATA") + "\\GOG.com\\Galaxy\\plugins\\installed\\Rockstar"
-PLUGIN_HTML_PATH_WINDOWS = PLUGIN_PATH_WINDOWS + "\\RockstarFPGen.html"
+IS_WINDOWS = True if sys.platform == 'win32' else False
 
-PLUGIN_PATH_MAC = "${HOME}/Library/Application Support/GOG.com/Galaxy/plugins/installed/Rockstar"  # Is this right?
-PLUGIN_HTML_PATH_MAC = PLUGIN_PATH_MAC + "\\RockstarFPGen.html"
+PLUGIN_HTML_PATH = os.path.join(__file__, '..', 'RockstarFPGen.html')
 
 ROCKSTAR_LAUNCHERPATCHER_EXE = "LauncherPatcher.exe"
 ROCKSTAR_LAUNCHER_EXE = "Launcher.exe"  # It's a terribly generic name for a launcher.
-
-OPERATING_SYSTEM = "Windows" if sys.platform == "win32" else "Mac"
 
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 "
               "Safari/537.36")
