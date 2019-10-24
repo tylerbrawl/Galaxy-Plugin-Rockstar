@@ -382,7 +382,7 @@ class RockstarPlugin(Plugin):
         else:
             raise NoLogFoundException()
 
-    if not IS_WINDOWS:
+    if IS_WINDOWS:
         async def get_local_games(self):
             # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value that
             # needs to be returned. However, for internal use (the self.local_games_cache field), the dictionary local_games
