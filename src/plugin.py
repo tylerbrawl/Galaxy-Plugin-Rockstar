@@ -12,16 +12,15 @@ import pickle
 import re
 import sys
 
-from consts import IS_WINDOWS
-if IS_WINDOWS:
-    import ctypes.wintypes
-    from local import LocalClient, check_if_process_exists
-
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import AuthenticatedHttpClient
 from version import __version__
+
+if IS_WINDOWS:
+    import ctypes.wintypes
+    from local import LocalClient, check_if_process_exists
 
 
 class RockstarPlugin(Plugin):
@@ -96,8 +95,12 @@ class RockstarPlugin(Plugin):
             if cookie['name'] == "ScAuthTokenData":
                 self._http_client.set_current_auth_token(cookie['value'])
             if cookie['name'] == "RMT":
-                log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
-                self._http_client.set_refresh_token(cookie['value'])
+                if cookie['value'] != "":
+                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                    self._http_client.set_refresh_token(cookie['value'])
+                else:
+                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: [Blank!]")
+                    self._http_client.set_refresh_token('')
             if cookie['name'] == "fingerprint":
                 log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
                 self._http_client.set_fingerprint(cookie['value'].replace("$", ";"))
@@ -384,9 +387,9 @@ class RockstarPlugin(Plugin):
 
     if IS_WINDOWS:
         async def get_local_games(self):
-            # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value that
-            # needs to be returned. However, for internal use (the self.local_games_cache field), the dictionary local_games
-            # is used for greater flexibility.
+            # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value
+            # that needs to be returned. However, for internal use (the self.local_games_cache field), the dictionary
+            # local_games is used for greater flexibility.
             local_games = {}
             local_list = []
             for game in self.total_games_cache:
@@ -440,8 +443,8 @@ class RockstarPlugin(Plugin):
             title_id = get_game_title_id_from_ros_title_id(game_id)
             log.debug("ROCKSTAR_INSTALL_REQUEST: Requesting to install " + title_id + "...")
             self._local_client.install_game_from_title_id(title_id)
-            # If the game is not released yet, then we should allow them to see this on the Rockstar Games Launcher, but the
-            # game's installation status should not be changed.
+            # If the game is not released yet, then we should allow them to see this on the Rockstar Games Launcher,
+            # but the game's installation status should not be changed.
             if games_cache[title_id]["isPreOrder"]:
                 return
             self.update_local_game_status(LocalGame(game_id, LocalGameState.Installed))

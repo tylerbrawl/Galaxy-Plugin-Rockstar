@@ -54,6 +54,8 @@ class AuthenticatedHttpClient(HttpClient):
         self._debug_always_refresh = False  # Set this to True if you are debugging ScAuthTokenData refreshing.
         self._store_credentials = store_credentials
         self.bearer = None
+        # The refresh token here is the RMT cookie. The other refresh token is the rsso cookie. The RMT cookie is blank
+        # for users not using two-factor authentication.
         self.refresh_token = Token()
         self._fingerprint = None
         self.user = None
@@ -269,7 +271,12 @@ class AuthenticatedHttpClient(HttpClient):
             refresh_code = refresh_resp.text
             log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
             # We need to set the new refresh token here, if it is updated.
-            self.set_refresh_token(self._current_session.cookies['RMT'])
+            if "RMT" in self._current_session.cookies:
+                self.set_refresh_token(self._current_session.cookies['RMT'])
+            else:
+                log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not enabled"
+                          " two-factor authentication. Proceeding anyways...")
+                self.set_refresh_token('')
             # The Social Club API will not grant the user a new ScAuthTokenData token if they already have one that is
             # relevant, so when refreshing the credentials, the old token is deleted here.
             old_auth = self._current_session.cookies['ScAuthTokenData']
@@ -286,9 +293,9 @@ class AuthenticatedHttpClient(HttpClient):
                 "User-Agent": USER_AGENT
             }
             data = {"code": refresh_code}
-            log.debug("ROCKSTAR_CODE: " + data['code'])
+            # log.debug("ROCKSTAR_CODE: " + data['code'])
             final_request = self._current_session.post(url, json=data, headers=headers, timeout=5)
-            log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
+            # log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
             final_json = final_request.json()
             log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
             new_auth = self._current_session.cookies['ScAuthTokenData']
