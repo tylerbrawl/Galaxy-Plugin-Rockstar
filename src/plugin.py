@@ -1,5 +1,5 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
-from galaxy.api.consts import Platform, OSCompatibility
+from galaxy.api.consts import Platform
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo, Achievement
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired
 
