@@ -401,6 +401,9 @@ class RockstarPlugin(Plugin):
                         local_game = self.create_local_game_from_title_id(title_id, True, True)
                     else:
                         local_game = self.create_local_game_from_title_id(title_id, False, True)
+                        if title_id in self.running_games_pids:
+                            # If the game is no longer running, then we can stop checking to see if it is running.
+                            del self.running_games_pids[title_id]
                 else:
                     local_game = self.create_local_game_from_title_id(title_id, False, False)
                 local_games[title_id] = local_game
