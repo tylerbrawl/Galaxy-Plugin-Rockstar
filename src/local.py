@@ -12,9 +12,7 @@ from game_cache import games_cache
 
 
 def check_if_process_exists(pid):
-    log.debug("ROCKSTAR_RUNNING_CHECK: Is " + str(ProcessId(pid)) + " in " + str(pids()) + "?")
     if not pid:
-        log.debug("Nope.")
         return False
     if int(pid) in pids():
         return True
