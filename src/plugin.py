@@ -11,6 +11,7 @@ import os
 import pickle
 import re
 import sys
+import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
@@ -61,7 +62,7 @@ class RockstarPlugin(Plugin):
         try:
             log.info("INFO: The credentials were successfully obtained.")
             cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
-            log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
+            # log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
             for cookie in cookies:
                 cookie_object = {
                     "name": cookie.name,
@@ -304,27 +305,14 @@ class RockstarPlugin(Plugin):
         if current_log_count == 10:
             log.warning("ROCKSTAR_LAST_LOG_REACHED: There are no more log files that can be found and/or read "
                         "from. Assuming that the online list is correct...")
-        remove_all = False
-        if len(self.owned_games_cache) == 0:
-            remove_all = True
+
         for title_id in owned_title_ids:
             game = self.create_game_from_title_id(title_id)
             if game not in self.owned_games_cache:
                 log.debug("ROCKSTAR_ADD_GAME: Adding " + title_id + " to owned games cache...")
                 self.add_game(game)
                 self.owned_games_cache.append(game)
-        if remove_all is True:
-            for key, value in games_cache.items():
-                if key not in owned_title_ids:
-                    log.debug("ROCKSTAR_REMOVE_GAME: Removing " + key + " from owned games cache...")
-                    self.remove_game(value['rosTitleId'])
-        else:
-            for game in self.owned_games_cache:
-                if get_game_title_id_from_ros_title_id(game.game_id) not in owned_title_ids:
-                    log.debug("ROCKSTAR_REMOVE_GAME: Removing " + get_game_title_id_from_ros_title_id(game.game_id) +
-                              " from owned games cache...")
-                    self.remove_game(game.game_id)
-                    self.owned_games_cache.remove(game)
+
         return self.owned_games_cache
 
     @staticmethod
@@ -385,6 +373,26 @@ class RockstarPlugin(Plugin):
         else:
             raise NoLogFoundException()
 
+    async def open_rockstar_browser(self):
+        url = "https://www.rockstargames.com/downloads"
+
+        log.info(f"Opening Rockstar website {url}")
+        webbrowser.open(url)
+
+    def check_game_status(self, title_id):
+        state = LocalGameState.None_
+
+        game_installed = self._local_client.get_path_to_game(title_id)
+        if game_installed:
+            state |= LocalGameState.Installed
+
+            if check_if_process_exists(self.running_games_pids.get(title_id)):
+                state |= LocalGameState.Running
+            else:
+                self.running_games_pids[title_id] = None
+
+        return LocalGame(str(self.games_cache[title_id]["rosTitleId"]), state)
+
     if IS_WINDOWS:
         async def get_local_games(self):
             # Since the API requires that get_local_games returns a list of LocalGame objects, local_list is the value
@@ -394,22 +402,11 @@ class RockstarPlugin(Plugin):
             local_list = []
             for game in self.total_games_cache:
                 title_id = get_game_title_id_from_ros_title_id(str(game.game_id))
-                check = self._local_client.get_path_to_game(title_id)
-                if check is not None:
-                    if (title_id in self.running_games_pids and
-                            check_if_process_exists(self.running_games_pids[title_id][0])):
-                        local_game = self.create_local_game_from_title_id(title_id, True, True)
-                    else:
-                        local_game = self.create_local_game_from_title_id(title_id, False, True)
-                        if title_id in self.running_games_pids:
-                            # If the game is no longer running, then we can stop checking to see if it is running.
-                            del self.running_games_pids[title_id]
-                else:
-                    local_game = self.create_local_game_from_title_id(title_id, False, False)
+                local_game = self.check_game_status(title_id)
                 local_games[title_id] = local_game
                 local_list.append(local_game)
             self.local_games_cache = local_games
-            log.debug("ROCKSTAR_INSTALLED_GAMES: " + str(local_games))
+            log.debug(f"ROCKSTAR_INSTALLED_GAMES: {local_games}")
             return local_list
 
     async def check_for_new_games(self):
@@ -420,57 +417,58 @@ class RockstarPlugin(Plugin):
 
     async def check_game_statuses(self):
         self.updating_game_statuses = True
-        old_local_game_cache = self.local_games_cache
-        await self.get_local_games()
-        for title_id, local_game in self.local_games_cache.items():
-            if (local_game.local_game_state !=
-                    (old_local_game_cache[title_id]).local_game_state):
-                log.debug("ROCKSTAR_LOCAL_CHANGE: The status for " + title_id + " has changed.")
-                self.update_local_game_status(local_game)
-        #   else:
-        #       log.debug("ROCKSTAR_LOCAL_REMAIN: The status for " + title_id + " has not changed.") - Reduce Console
-        #       Spam (Enable this if you need to.)
+
+        for title_id, current_local_game in self.local_games_cache.items():
+            new_local_game = self.check_game_status(title_id)
+            if new_local_game != current_local_game:
+                log.debug(f"ROCKSTAR_LOCAL_CHANGE: The status for {title_id} has changed from: {current_local_game} to {new_local_game}")
+                self.update_local_game_status(new_local_game)
+                self.local_games_cache[title_id] = new_local_game
+
         await asyncio.sleep(5)
         self.updating_game_statuses = False
 
     if IS_WINDOWS:
         async def launch_game(self, game_id):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
             title_id = get_game_title_id_from_ros_title_id(game_id)
-            self.running_games_pids[title_id] = [await self._local_client.launch_game_from_title_id(title_id), True]
-            log.debug("ROCKSTAR_PIDS: " + str(self.running_games_pids))
-            if self.running_games_pids[title_id][0] != '-1':
-                self.update_local_game_status(LocalGame(game_id, LocalGameState.Running | LocalGameState.Installed))
+            game_pid = await self._local_client.launch_game_from_title_id(title_id)
+            if game_pid:
+                self.running_games_pids[title_id] = game_pid
+                log.debug(f"ROCKSTAR_PIDS: {self.running_games_pids}")
+                local_game = LocalGame(game_id, LocalGameState.Running | LocalGameState.Installed)
+                self.update_local_game_status(local_game)
+                self.local_games_cache[title_id] = local_game
+            else:
+                log.error(f'cannot start game: {title_id}')
 
     if IS_WINDOWS:
         async def install_game(self, game_id):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
             title_id = get_game_title_id_from_ros_title_id(game_id)
             log.debug("ROCKSTAR_INSTALL_REQUEST: Requesting to install " + title_id + "...")
             self._local_client.install_game_from_title_id(title_id)
-            # If the game is not released yet, then we should allow them to see this on the Rockstar Games Launcher,
-            # but the game's installation status should not be changed.
-            if games_cache[title_id]["isPreOrder"]:
-                return
-            self.update_local_game_status(LocalGame(game_id, LocalGameState.Installed))
 
     if IS_WINDOWS:
         async def uninstall_game(self, game_id):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
             title_id = get_game_title_id_from_ros_title_id(game_id)
             log.debug("ROCKSTAR_UNINSTALL_REQUEST: Requesting to uninstall " + title_id + "...")
             self._local_client.uninstall_game_from_title_id(title_id)
             self.update_local_game_status(LocalGame(game_id, LocalGameState.None_))
 
     def create_game_from_title_id(self, title_id):
-        return Game(self.games_cache[title_id]["rosTitleId"], self.games_cache[title_id]["friendlyName"], None,
+        return Game(str(self.games_cache[title_id]["rosTitleId"]), self.games_cache[title_id]["friendlyName"], None,
                     self.games_cache[title_id]["licenseInfo"])
-
-    def create_local_game_from_title_id(self, title_id, is_running, is_installed):
-        if is_running:
-            return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.Running |
-                             LocalGameState.Installed)
-        elif is_installed:
-            return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.Installed)
-        else:
-            return LocalGame(self.games_cache[title_id]["rosTitleId"], LocalGameState.None_)
 
     def tick(self):
         if not self.is_authenticated():

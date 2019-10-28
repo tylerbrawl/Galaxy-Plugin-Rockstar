@@ -186,7 +186,7 @@ class AuthenticatedHttpClient(HttpClient):
     async def _get_user_json(self, message=None):
         try:
             old_auth = self._current_session.cookies['ScAuthTokenData']
-            log.debug("ROCKSTAR_OLD_AUTH: " + str(old_auth))
+            log.debug(f"ROCKSTAR_OLD_AUTH: {str(old_auth)[:5]}***{str(old_auth[-3:])}")
             headers = {
                 "accept": "application/json, text/plain, */*",
                 "connection": "keep-alive",
@@ -198,7 +198,7 @@ class AuthenticatedHttpClient(HttpClient):
             resp = self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
                                              allow_redirects=False, timeout=5)
             new_auth = self._current_session.cookies['ScAuthTokenData']
-            log.debug("ROCKSTAR_NEW_AUTH: " + str(new_auth))
+            log.debug(f"ROCKSTAR_NEW_AUTH {str(new_auth)[:5]}***{str(new_auth[-3:])}")
             self._current_auth_token = new_auth
             if new_auth != old_auth:
                 log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
