@@ -374,6 +374,7 @@ class RockstarPlugin(Plugin):
             raise NoLogFoundException()
 
     async def open_rockstar_browser(self):
+        # This method allows the user to install the Rockstar Games Launcher, it it is not already installed.
         url = "https://www.rockstargames.com/downloads"
 
         log.info(f"Opening Rockstar website {url}")
@@ -421,7 +422,8 @@ class RockstarPlugin(Plugin):
         for title_id, current_local_game in self.local_games_cache.items():
             new_local_game = self.check_game_status(title_id)
             if new_local_game != current_local_game:
-                log.debug(f"ROCKSTAR_LOCAL_CHANGE: The status for {title_id} has changed from: {current_local_game} to {new_local_game}")
+                log.debug(f"ROCKSTAR_LOCAL_CHANGE: The status for {title_id} has changed from: {current_local_game} to "
+                          f"{new_local_game}")
                 self.update_local_game_status(new_local_game)
                 self.local_games_cache[title_id] = new_local_game
 
@@ -453,6 +455,8 @@ class RockstarPlugin(Plugin):
 
             title_id = get_game_title_id_from_ros_title_id(game_id)
             log.debug("ROCKSTAR_INSTALL_REQUEST: Requesting to install " + title_id + "...")
+            # There is no need to check if the game is a pre-order, since the InstallLocation registry key will be
+            # unavailable if it is.
             self._local_client.install_game_from_title_id(title_id)
 
     if IS_WINDOWS:
