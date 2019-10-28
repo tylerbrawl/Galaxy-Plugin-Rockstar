@@ -5,16 +5,18 @@ import subprocess
 import asyncio
 import locale
 
-from galaxy.proc_tools import pids
+from galaxy.proc_tools import pids, ProcessId
 
 from consts import WINDOWS_UNINSTALL_KEY
 from game_cache import games_cache
 
 
 def check_if_process_exists(pid):
+    log.debug("ROCKSTAR_RUNNING_CHECK: Is " + str(ProcessId(pid)) + " in " + str(pids()) + "?")
     if not pid:
+        log.debug("Nope.")
         return False
-    if pid in pids():
+    if int(pid) in pids():
         return True
     return False
 
@@ -47,7 +49,7 @@ class LocalClient:
             # Console Spam (Enable this if you need to.)
             return None
 
-    async def game_pid_from_tasklist(self, title_id):
+    async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
         find_actual_pid = subprocess.Popen(
             f'tasklist /FI "IMAGENAME eq {games_cache[title_id]["launchEXE"]} " /FI "STATUS eq running" /FO LIST',
@@ -71,7 +73,7 @@ class LocalClient:
         subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
-        retries = 30
+        retries = 60
         while retries > 0:
             await asyncio.sleep(1)
             pid = await self.game_pid_from_tasklist(title_id)
