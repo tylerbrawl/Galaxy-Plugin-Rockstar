@@ -62,7 +62,7 @@ class RockstarPlugin(Plugin):
         try:
             log.info("INFO: The credentials were successfully obtained.")
             cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
-            log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))
+            # log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
             for cookie in cookies:
                 cookie_object = {
                     "name": cookie.name,
