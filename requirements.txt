@@ -1,5 +1,4 @@
 galaxy.plugin.api==0.55
 python-dateutil==2.8.0
-requests==2.22.0
 file_read_backwards==2.0.0
 yarl==1.3.0
