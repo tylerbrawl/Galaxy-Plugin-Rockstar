@@ -90,7 +90,7 @@ games_cache = {
     },
     "rdr2": {
         "friendlyName": "Red Dead Redemption 2",
-        "guid": "[Missing]",  # Update this value from the Rockstar Games Launcher as soon as possible.
+        "guid": "Red Dead Redemption 2",
         "rosTitleId": 13,
         "onlineTitleId": 912,
         "launchEXE": "RDR2.exe",
