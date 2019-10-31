@@ -7,7 +7,7 @@ import locale
 
 from galaxy.proc_tools import pids
 
-from consts import WINDOWS_UNINSTALL_KEY
+from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA
 from game_cache import games_cache
 
 
@@ -32,7 +32,10 @@ class LocalClient:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + "Rockstar Games Launcher")
             dir, type = QueryValueEx(key, "InstallLocation")
             self.installer_location = dir[:-1] + "\\Launcher.exe\""
-            log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            else:
+                log.debug("ROCKSTAR_INSTALLER_PATH: ***")
         except WindowsError:
             self.installer_location = None
         return self.installer_location
@@ -71,7 +74,7 @@ class LocalClient:
         subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
-        retries = 60
+        retries = 300
         while retries > 0:
             await asyncio.sleep(1)
             pid = await self.game_pid_from_tasklist(title_id)
