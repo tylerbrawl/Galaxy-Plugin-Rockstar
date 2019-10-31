@@ -13,7 +13,7 @@ import re
 import sys
 import webbrowser
 
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import BackendClient
@@ -61,8 +61,9 @@ class RockstarPlugin(Plugin):
             return NextStep("web_session", AUTH_PARAMS)
         try:
             log.info("INFO: The credentials were successfully obtained.")
-            # cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
-            # log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
+            if LOG_SENSITIVE_DATA:
+                cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar'])).cookies
+                log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
             # for cookie in cookies:
             #   self._http_client.update_cookies({cookie.name: cookie.value})
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
@@ -91,19 +92,32 @@ class RockstarPlugin(Plugin):
                 self._http_client.set_current_auth_token(cookie['value'])
             if cookie['name'] == "RMT":
                 if cookie['value'] != "":
-                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                    if LOG_SENSITIVE_DATA:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                    else:
+                        log.debug("ROCKSRAR_REMEMBER_ME: Got RMT: ***")  # Only asterisks are shown here for consistency
+                        # with the output when the user has a blank RMT from multi-factor authentication.
                     self._http_client.set_refresh_token(cookie['value'])
                 else:
-                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: [Blank!]")
+                    if LOG_SENSITIVE_DATA:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: [Blank!]")
+                    else:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: ***")
                     self._http_client.set_refresh_token('')
             if cookie['name'] == "fingerprint":
-                log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
+                else:
+                    log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: ***")
                 self._http_client.set_fingerprint(cookie['value'].replace("$", ";"))
                 # We will not add the fingerprint as a cookie to the session; it will instead be stored with the user's
                 # credentials.
                 continue
             if re.search("^rsso", cookie['name']):
-                log.debug("ROCKSTAR_RSSO: Got " + cookie['name'] + ": " + cookie['value'])
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_RSSO: Got " + cookie['name'] + ": " + cookie['value'])
+                else:
+                    log.debug(f"ROCKSTAR_RSSO: Got rsso-***: {cookie['value'][:5]}***{cookie['value'][-3:]}")
             cookie_object = {
                 "name": cookie['name'],
                 "value": cookie['value'],
@@ -199,7 +213,10 @@ class RockstarPlugin(Plugin):
         url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                "pageIndex=0&pageSize=30")
         current_page = await self._http_client.get_json_from_request_strict(url)
-        log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
+        if LOG_SENSITIVE_DATA:
+            log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
+        else:
+            log.debug("ROCKSTAR_FRIENDS_REQUEST: ***")
         num_friends = current_page['rockstarAccountList']['totalFriends']
         num_pages_required = num_friends / 30 if num_friends % 30 != 0 else (num_friends / 30) - 1
 
@@ -215,8 +232,11 @@ class RockstarPlugin(Plugin):
             else:
                 self.friends_cache.append(friend)
                 self.add_friend(friend)
-            log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                      str(friend.user_id) + ")")
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
+                          str(friend.user_id) + ")")
+            else:
+                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
@@ -239,8 +259,11 @@ class RockstarPlugin(Plugin):
             else:  # An else-statement occurs after a for-statement if the latter finishes WITHOUT breaking.
                 self.friends_cache.append(friend)
                 self.add_friend(friend)
-            log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                      str(friend.user_id) + ")")
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
+                          str(friend.user_id) + ")")
+            else:
+                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
         return return_list
 
     async def get_owned_games(self):
@@ -282,7 +305,11 @@ class RockstarPlugin(Plugin):
                     log_file_append = ".0" + str(current_log_count)
                 log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher" + log_file_append
                                         + ".log")
-                log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+                else:
+                    log.debug("ROCKSTAR_LOG_LOCATION: Checking the file ***...")  # The path to the Launcher log file
+                    # likely contains the user's PC profile name (C:\Users\[Name]\Documents...).
                 owned_title_ids = await self.parse_log_file(log_file, owned_title_ids, online_check_success)
                 break
             except NoGamesInLogException:
@@ -368,7 +395,7 @@ class RockstarPlugin(Plugin):
             raise NoLogFoundException()
 
     async def open_rockstar_browser(self):
-        # This method allows the user to install the Rockstar Games Launcher, it it is not already installed.
+        # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.
         url = "https://www.rockstargames.com/downloads"
 
         log.info(f"Opening Rockstar website {url}")
@@ -417,7 +444,7 @@ class RockstarPlugin(Plugin):
             new_local_game = self.check_game_status(title_id)
             if new_local_game != current_local_game:
                 log.debug(f"ROCKSTAR_LOCAL_CHANGE: The status for {title_id} has changed from: {current_local_game} to "
-                          f"{new_local_game}")
+                          f"{new_local_game}.")
                 self.update_local_game_status(new_local_game)
                 self.local_games_cache[title_id] = new_local_game
 

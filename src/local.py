@@ -7,7 +7,7 @@ import locale
 
 from galaxy.proc_tools import pids
 
-from consts import WINDOWS_UNINSTALL_KEY
+from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA
 from game_cache import games_cache
 
 
@@ -32,7 +32,10 @@ class LocalClient:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + "Rockstar Games Launcher")
             dir, type = QueryValueEx(key, "InstallLocation")
             self.installer_location = dir[:-1] + "\\Launcher.exe\""
-            log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            else:
+                log.debug("ROCKSTAR_INSTALLER_PATH: ***")
         except WindowsError:
             self.installer_location = None
         return self.installer_location
