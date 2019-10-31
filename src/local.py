@@ -5,7 +5,7 @@ import subprocess
 import asyncio
 import locale
 
-from galaxy.proc_tools import pids, ProcessId
+from galaxy.proc_tools import pids
 
 from consts import WINDOWS_UNINSTALL_KEY
 from game_cache import games_cache

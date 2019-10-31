@@ -1,4 +1,5 @@
-from galaxy.http import HttpClient
+from galaxy.http import create_client_session
+from http.cookies import SimpleCookie
 
 from consts import USER_AGENT
 
@@ -9,7 +10,6 @@ import datetime
 import logging as log
 import pickle
 import re
-import requests
 import traceback
 
 from time import time
@@ -48,8 +48,35 @@ class CookieJar(aiohttp.CookieJar):
         if cookies and self._cookies_updated_callback:
             self._cookies_updated_callback(list(self))
 
+    # aiohttp.CookieJar provides no method for deleting a specific cookie, so we need to create our own methods for
+    # this. We also need to create our own method for getting a specific cookie.
 
-class AuthenticatedHttpClient(HttpClient):
+    def remove_cookie(self, remove_name, domain="signin.rockstargames.com"):
+        for key, morsel in self._cookies[domain].items():
+            if remove_name == morsel.key:
+                del self._cookies[domain][key]
+                return
+        log.debug("ROCKSTAR_REMOVE_COOKIE_ERROR: The cookie " + remove_name + " from domain " + domain +
+                  " does not exist!")
+
+    def remove_cookie_regex(self, remove_regex, domain="signin.rockstargames.com"):
+        for key, morsel in self._cookies[domain].items():
+            if re.search(remove_regex, morsel.key):
+                del self._cookies[domain][key]
+                return
+        log.debug("ROCKSTAR_REMOVE_COOKIE_REGEX_ERROR: There is no cookie from domain " + domain + " that matches the "
+                  "regular expression " + remove_regex + "!")
+
+    def get(self, cookie_name, domain="signin.rockstargames.com"):
+        for key, morsel in self._cookies[domain].items():
+            if cookie_name == morsel.key:
+                return self._cookies[domain][key].value
+        log.debug("ROCKSTAR_GET_COOKIE_ERROR: The cookie " + cookie_name + " from domain " + domain +
+                  " does not exist!")
+        return ''
+
+
+class BackendClient:
     def __init__(self, store_credentials):
         self._debug_always_refresh = False  # Set this to True if you are debugging ScAuthTokenData refreshing.
         self._store_credentials = store_credentials
@@ -62,12 +89,13 @@ class AuthenticatedHttpClient(HttpClient):
         local_time_zone = dateutil.tz.tzlocal()
         self._utc_offset = local_time_zone.utcoffset(datetime.datetime.now(local_time_zone)).total_seconds() / 60
         self._current_session = None
-        self._cookie_jar = CookieJar()
-        self._cookie_jar_ros = CookieJar()
         self._auth_lost_callback = None
         self._current_auth_token = None
         self._first_auth = True
-        super().__init__(cookie_jar=self._cookie_jar)
+        # super().__init__(cookie_jar=self._cookie_jar)
+
+    async def close(self):
+        await self._current_session.close()
 
     def get_credentials(self):
         creds = self.user
@@ -77,25 +105,29 @@ class AuthenticatedHttpClient(HttpClient):
         # as using a value from Chrome on Firefox returned an error. Likewise, creating a new session object, rather
         # than reimplementing the old session object, returns an error when using a correct ScAuthTokenData value, even
         # if the two sessions have equivalent cookies.
-        creds['session_object'] = pickle.dumps(self._current_session).hex()
+        morsel_list = []
+        for morsel in self._current_session.cookie_jar.__iter__():
+            morsel_list.append(morsel)
+        creds['cookie_jar'] = pickle.dumps(morsel_list).hex()
         creds['current_auth_token'] = self._current_auth_token
         creds['refresh_token'] = pickle.dumps(self.refresh_token).hex()
         creds['fingerprint'] = self._fingerprint
         return creds
 
     def set_cookies_updated_callback(self, callback):
-        self._cookie_jar.set_cookies_updated_callback(callback)
+        self._current_session.cookie_jar.set_cookies_updated_callback(callback)
 
     def update_cookie(self, cookie):
         # I believe that the cookie beginning with rsso gets a different name occasionally, so we need to delete the old
         # rsso cookie using regular expressions if we want to ensure that the refresh token can continue to be obtained.
+
         if re.search("^rsso", cookie['name']):
-            for old_cookie in self._current_session.cookies:
-                old_rsso_search = re.search("^rsso", old_cookie.name)
-                if old_rsso_search:
-                    del self._current_session.cookies[old_rsso_search.string]
-        del self._current_session.cookies[cookie['name']]
-        self._current_session.cookies.set(**cookie)
+            self._current_session.cookie_jar.remove_cookie_regex("^rsso")
+        cookie_object = SimpleCookie()
+        cookie_object[cookie['name']] = cookie['value']
+        cookie_object[cookie['name']]['domain'] = cookie['domain']
+        cookie_object[cookie['name']]['path'] = cookie['path']
+        self._current_session.cookie_jar.update_cookies(cookie_object)
 
     def set_auth_lost_callback(self, callback):
         self._auth_lost_callback = callback
@@ -135,22 +167,16 @@ class AuthenticatedHttpClient(HttpClient):
         return self._fingerprint is not None
 
     def create_session(self, stored_credentials):
-        if stored_credentials is None:
-            self._current_session = requests.Session()
-            self._current_session.max_redirects = 300
-        elif self._current_session is None:
-            self._current_session = pickle.loads(bytes.fromhex(stored_credentials['session_object']))
-            self._current_session.cookies.clear()
-
-    # Side Note: The following method is meant to ensure that the access (bearer) token continues to remain relevant.
-    async def do_request(self, method, *args, **kwargs):
-        try:
-            return await self.request(method, *args, **kwargs)
-        except Exception as e:
-            log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
-            self.set_auth_lost_callback(True)
-            await self.authenticate()
-            return await self.request(method, *args, **kwargs)
+        self._current_session = create_client_session(cookie_jar=CookieJar())
+        self._current_session.max_redirects = 300
+        if stored_credentials is not None:
+            morsel_list = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
+            for morsel in morsel_list:
+                cookie_object = SimpleCookie()
+                cookie_object[morsel.key] = morsel.value
+                cookie_object[morsel.key]['domain'] = morsel['domain']
+                cookie_object[morsel.key]['path'] = morsel['path']
+                self._current_session.cookie_jar.update_cookies(cookie_object)
 
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
@@ -159,9 +185,10 @@ class AuthenticatedHttpClient(HttpClient):
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
-            s = requests.Session()
-            resp = s.get(url, headers=headers)
-            return resp.json()
+            s = create_client_session()
+            resp = await s.get(url, headers=headers)
+            await s.close()
+            return await resp.json()
         except Exception as e:
             log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)
@@ -169,7 +196,7 @@ class AuthenticatedHttpClient(HttpClient):
             return await self.get_json_from_request_strict(url, include_default_headers, additional_headers)
 
     async def get_bearer_from_cookie_jar(self):
-        morsel_list = self._cookie_jar.__iter__()
+        morsel_list = self._current_session.cookie_jar.__iter__()
         cookies = {}
         for morsel in morsel_list:
             cookies[morsel.key] = morsel.value
@@ -178,14 +205,14 @@ class AuthenticatedHttpClient(HttpClient):
 
     async def get_cookies_for_headers(self):
         cookie_string = ""
-        for key, value in self._current_session.cookies.get_dict().items():
-            cookie_string += "" + str(key) + "=" + str(value) + ";"
+        for morsel in self._current_session.cookie_jar.__iter__():
+            cookie_string += "" + str(morsel.key) + "=" + str(morsel.value) + ";"
             # log.debug("ROCKSTAR_CURR_COOKIE: " + cookie_string)
         return cookie_string[:len(cookie_string) - 1]
 
     async def _get_user_json(self, message=None):
         try:
-            old_auth = self._current_session.cookies['ScAuthTokenData']
+            old_auth = self._current_auth_token
             log.debug(f"ROCKSTAR_OLD_AUTH: {str(old_auth)[:5]}***{str(old_auth[-3:])}")
             headers = {
                 "accept": "application/json, text/plain, */*",
@@ -195,16 +222,17 @@ class AuthenticatedHttpClient(HttpClient):
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
             }
-            resp = self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
-                                             allow_redirects=False, timeout=5)
-            new_auth = self._current_session.cookies['ScAuthTokenData']
+            resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
+                                                   allow_redirects=False, timeout=5)
+            # aiohttp.ClientSession allows you to get a specified cookie from the previous response.
+            new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
             log.debug(f"ROCKSTAR_NEW_AUTH {str(new_auth)[:5]}***{str(new_auth[-3:])}")
             self._current_auth_token = new_auth
             if new_auth != old_auth:
                 log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
-            return resp.json()
+            return await resp.json()
         except Exception as e:
             if message is not None:
                 log.error(message)
@@ -251,15 +279,16 @@ class AuthenticatedHttpClient(HttpClient):
         # Finally, this last request updates the cookies that are used for further authentication.
         try:
             url = "https://signin.rockstargames.com/connect/cors/check/rsg"
-            rsso_cookie = {}
             rsso_name = None
-            for cookie in self._current_session.cookies:
-                if re.search("^rsso", cookie.name):
-                    rsso_name = cookie.name
-                    rsso_cookie[cookie.name] = cookie.value
+            rsso_value = None
+            for morsel in self._current_session.cookie_jar.__iter__():
+                if re.search("^rsso", morsel.key):
+                    rsso_name = morsel.key
+                    rsso_value = morsel.value
+                    break
             headers = {
                 "Accept": "application/json, text/plain, */*",
-                "Cookie": "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_cookie[rsso_name],
+                "Cookie": "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_value,
                 "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
                 "Host": "signin.rockstargames.com",
                 "Origin": "https://www.rockstargames.com",
@@ -267,26 +296,27 @@ class AuthenticatedHttpClient(HttpClient):
                 "X-Requested-With": "XMLHttpRequest"
             }
             data = {"fingerprint": self._fingerprint}
-            refresh_resp = self._current_session.post(url, data=data, headers=headers, timeout=5)
-            refresh_code = refresh_resp.text
+            refresh_resp = await self._current_session.post(url, data=data, headers=headers, timeout=5)
+            refresh_code = await refresh_resp.text()
             log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
             # We need to set the new refresh token here, if it is updated.
-            if "RMT" in self._current_session.cookies:
-                self.set_refresh_token(self._current_session.cookies['RMT'])
+            if "RMT" in refresh_resp.cookies:
+                self.set_refresh_token(self._current_session.cookie_jar.get('RMT'))
             else:
                 log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not enabled"
                           " two-factor authentication. Proceeding anyways...")
                 self.set_refresh_token('')
             # The Social Club API will not grant the user a new ScAuthTokenData token if they already have one that is
             # relevant, so when refreshing the credentials, the old token is deleted here.
-            old_auth = self._current_session.cookies['ScAuthTokenData']
-            del self._current_session.cookies['ScAuthTokenData']
+            old_auth = self._current_auth_token
+            self._current_session.cookie_jar.remove_cookie('ScAuthTokenData', domain='www.rockstargames.com')
             self._current_auth_token = None
             log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
             url = "https://www.rockstargames.com/auth/login.json"
             headers = {
                 "Accept": "application/json, text/plain, */*",
-                "Cookie": "TS019978c2=" + self._current_session.cookies['TS019978c2'],
+                "Cookie": "TS019978c2=" + self._current_session.cookie_jar.get('TS019978c2',
+                                                                               domain='support.rockstargames.com'),
                 "Content-type": "application/json",
                 "Host": "www.rockstargames.com",
                 "Referer": "https://www.rockstargames.com/",
@@ -294,11 +324,11 @@ class AuthenticatedHttpClient(HttpClient):
             }
             data = {"code": refresh_code}
             # log.debug("ROCKSTAR_CODE: " + data['code'])
-            final_request = self._current_session.post(url, json=data, headers=headers, timeout=5)
+            final_request = await self._current_session.post(url, json=data, headers=headers, timeout=5)
             # log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
-            final_json = final_request.json()
+            final_json = await final_request.json()
             log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
-            new_auth = self._current_session.cookies['ScAuthTokenData']
+            new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain='www.rockstargames.com')
             self._current_auth_token = new_auth
             log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
             if old_auth != new_auth:
@@ -338,10 +368,8 @@ class AuthenticatedHttpClient(HttpClient):
             "User-Agent": USER_AGENT
         }
         try:
-            s = requests.Session()
-            s.trust_env = False
-            resp_user = s.get(url, headers=headers)
-            resp_user_text = resp_user.json()
+            resp_user = await self._current_session.get(url, headers=headers)
+            resp_user_text = await resp_user.json()
         except Exception as e:
             log.error(
                 "ERROR: There was a problem with getting the user information with the token. Exception: " + repr(e))
