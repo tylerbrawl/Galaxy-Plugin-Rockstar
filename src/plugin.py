@@ -16,7 +16,7 @@ import webbrowser
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
-from http_client import AuthenticatedHttpClient
+from http_client import BackendClient
 from version import __version__
 
 if IS_WINDOWS:
@@ -28,7 +28,7 @@ class RockstarPlugin(Plugin):
     def __init__(self, reader, writer, token):
         super().__init__(Platform.Rockstar, __version__, reader, writer, token)
         self.games_cache = games_cache
-        self._http_client = AuthenticatedHttpClient(self.store_credentials)
+        self._http_client = BackendClient(self.store_credentials)
         self._local_client = None
         self.total_games_cache = self.create_total_games_cache()
         self._all_achievements_cache = {}
@@ -61,16 +61,10 @@ class RockstarPlugin(Plugin):
             return NextStep("web_session", AUTH_PARAMS)
         try:
             log.info("INFO: The credentials were successfully obtained.")
-            cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
+            # cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
             # log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
-            for cookie in cookies:
-                cookie_object = {
-                    "name": cookie.name,
-                    "value": cookie.value,
-                    "domain": cookie.domain,
-                    "path": cookie.path
-                }
-                self._http_client.update_cookie(cookie_object)
+            # for cookie in cookies:
+            #   self._http_client.update_cookies({cookie.name: cookie.value})
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
             self._http_client.set_refresh_token_absolute(
                 pickle.loads(bytes.fromhex(stored_credentials['refresh_token'])))
