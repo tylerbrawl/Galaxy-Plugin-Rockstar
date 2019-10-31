@@ -71,7 +71,7 @@ class LocalClient:
         subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
-        retries = 60
+        retries = 300
         while retries > 0:
             await asyncio.sleep(1)
             pid = await self.game_pid_from_tasklist(title_id)
