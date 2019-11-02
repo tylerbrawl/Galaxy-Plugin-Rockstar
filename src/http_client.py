@@ -78,7 +78,7 @@ class CookieJar(aiohttp.CookieJar):
 
 class BackendClient:
     def __init__(self, store_credentials):
-        self._debug_always_refresh = True  # Set this to True if you are debugging ScAuthTokenData refreshing.
+        self._debug_always_refresh = False  # Set this to True if you are debugging ScAuthTokenData refreshing.
         self._store_credentials = store_credentials
         self.bearer = None
         # The refresh token here is the RMT cookie. The other refresh token is the rsso cookie. The RMT cookie is blank
