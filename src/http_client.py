@@ -78,7 +78,7 @@ class CookieJar(aiohttp.CookieJar):
 
 class BackendClient:
     def __init__(self, store_credentials):
-        self._debug_always_refresh = False  # Set this to True if you are debugging ScAuthTokenData refreshing.
+        self._debug_always_refresh = True  # Set this to True if you are debugging ScAuthTokenData refreshing.
         self._store_credentials = store_credentials
         self.bearer = None
         # The refresh token here is the RMT cookie. The other refresh token is the rsso cookie. The RMT cookie is blank
@@ -137,6 +137,7 @@ class BackendClient:
 
     def set_current_auth_token(self, token):
         self._current_auth_token = token
+        self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': token})
 
     def get_current_auth_token(self):
         return self._current_auth_token
@@ -185,12 +186,10 @@ class BackendClient:
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
-            s = create_client_session()
-            resp = await s.get(url, headers=headers)
-            await s.close()
+            resp = await self._current_session.get(url, headers=headers)
             return await resp.json()
         except Exception as e:
-            log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
+            log.exception(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)
             await self.authenticate()
             return await self.get_json_from_request_strict(url, include_default_headers, additional_headers)
@@ -220,7 +219,7 @@ class BackendClient:
             headers = {
                 "accept": "application/json, text/plain, */*",
                 "connection": "keep-alive",
-                "cookie": "ScAuthTokenData=" + self._current_auth_token,
+                "cookie": "ScAuthTokenData=" + old_auth,
                 "host": "www.rockstargames.com",
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
@@ -228,14 +227,17 @@ class BackendClient:
             resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
                                                    allow_redirects=False, timeout=5)
             # aiohttp.ClientSession allows you to get a specified cookie from the previous response.
-            new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
+            # new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
+            filtered_cookies = self._current_session.cookie_jar.filter_cookies('www.rockstargames.com')
+            new_auth = filtered_cookies['ScAuthTokenData'].value
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_NEW_AUTH: {new_auth}")
             else:
-                log.debug(f"ROCKSTAR_NEW_AUTH {str(new_auth)[:5]}***{str(new_auth[-3:])}")
+                log.debug(f"ROCKSTAR_NEW_AUTH: {str(new_auth)[:5]}***{str(new_auth[-3:])}")
             self._current_auth_token = new_auth
             if new_auth != old_auth:
                 log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
+                self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': new_auth})
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
             return await resp.json()
@@ -318,7 +320,7 @@ class BackendClient:
             # The Social Club API will not grant the user a new ScAuthTokenData token if they already have one that is
             # relevant, so when refreshing the credentials, the old token is deleted here.
             old_auth = self._current_auth_token
-            self._current_session.cookie_jar.remove_cookie('ScAuthTokenData', domain='www.rockstargames.com')
+            # self._current_session.cookie_jar.remove_cookie('ScAuthTokenData', domain='www.rockstargames.com')
             self._current_auth_token = None
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
