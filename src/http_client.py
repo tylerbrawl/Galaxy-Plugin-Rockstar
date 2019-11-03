@@ -151,6 +151,7 @@ class BackendClient:
     def set_refresh_token(self, token):
         expiration_time = time() + (3600 * 24 * 365 * 20)
         self.refresh_token.set_token(token, expiration_time)
+        self._current_session.cookie_jar.update_cookies({"RMT": token})
 
     def set_refresh_token_absolute(self, token):
         self.refresh_token = token
@@ -293,7 +294,11 @@ class BackendClient:
             for morsel in self._current_session.cookie_jar.__iter__():
                 if re.search("^rsso", morsel.key):
                     rsso_name = morsel.key
+                    if LOG_SENSITIVE_DATA:
+                        log.debug(f"ROCKSTAR_RSSO_NAME: {rsso_name}")
                     rsso_value = morsel.value
+                    if LOG_SENSITIVE_DATA:
+                        log.debug(f"ROCKSTAR_RSSO_VALUE: {rsso_value}")
                     break
             headers = {
                 "Accept": "application/json, text/plain, */*",
@@ -310,9 +315,10 @@ class BackendClient:
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
             # We need to set the new refresh token here, if it is updated.
-            if "RMT" in refresh_resp.cookies:
-                self.set_refresh_token(self._current_session.cookie_jar.get('RMT'))
-            else:
+            filtered_cookies = self._current_session.cookie_jar.filter_cookies("signin.rockstargames.com")
+            try:
+                self.set_refresh_token(filtered_cookies['RMT'].value)
+            except KeyError:
                 if LOG_SENSITIVE_DATA:
                     log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not "
                               "enabled two-factor authentication. Proceeding anyways...")
