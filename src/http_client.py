@@ -226,7 +226,7 @@ class BackendClient:
                 "user-agent": USER_AGENT
             }
             resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
-                                                   allow_redirects=False, timeout=5)
+                                                   allow_redirects=False)
             # aiohttp.ClientSession allows you to get a specified cookie from the previous response.
             # new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
             filtered_cookies = self._current_session.cookie_jar.filter_cookies('www.rockstargames.com')
@@ -310,7 +310,7 @@ class BackendClient:
                 "X-Requested-With": "XMLHttpRequest"
             }
             data = {"fingerprint": self._fingerprint}
-            refresh_resp = await self._current_session.post(url, data=data, headers=headers, timeout=5)
+            refresh_resp = await self._current_session.post(url, data=data, headers=headers)
             refresh_code = await refresh_resp.text()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
@@ -344,7 +344,7 @@ class BackendClient:
             }
             data = {"code": refresh_code}
             # log.debug("ROCKSTAR_CODE: " + data['code'])
-            final_request = await self._current_session.post(url, json=data, headers=headers, timeout=5)
+            final_request = await self._current_session.post(url, json=data, headers=headers)
             # log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
             final_json = await final_request.json()
             if LOG_SENSITIVE_DATA:
