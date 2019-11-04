@@ -97,7 +97,7 @@ games_cache = {
         "achievementId": "rdr2",  # The achievements link for Red Dead Redemption 2 is currently unavailable, as the
         # game has not been released yet.
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "isPreOrder": True
+        "isPreOrder": False
     }
 }
 
