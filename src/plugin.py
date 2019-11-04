@@ -99,7 +99,12 @@ class RockstarPlugin(Plugin):
                             " cache nor the designated local file. Let's hope that the user is new...")
 
     async def authenticate(self, stored_credentials=None):
-        self._http_client.create_session(stored_credentials)
+        try:
+            self._http_client.create_session(stored_credentials)
+        except KeyError:
+            log.error("ROCKSTAR_OLD_LOG_IN: The user has likely previously logged into the plugin with a version less "
+                      "than v0.3, and their credentials might be corrupted. Forcing a log-out...")
+            raise InvalidCredentials()
         if not stored_credentials:
             return NextStep("web_session", AUTH_PARAMS)
         try:
