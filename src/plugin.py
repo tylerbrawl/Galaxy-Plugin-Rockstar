@@ -580,6 +580,16 @@ class RockstarPlugin(Plugin):
         return str(info_list)
 
     if IS_WINDOWS:
+        async def launch_platform_client(self):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
+            pid = await self._local_client.launch_game_from_title_id("launcher")
+            if not pid:
+                log.warning("ROCKSTAR_LAUNCHER_FAILED: The Rockstar Games Launcher could not be launched!")
+
+    if IS_WINDOWS:
         async def launch_game(self, game_id):
             if not self._local_client.get_local_launcher_path():
                 await self.open_rockstar_browser()
