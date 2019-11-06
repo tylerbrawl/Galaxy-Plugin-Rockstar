@@ -200,6 +200,7 @@ class RockstarPlugin(Plugin):
             file.write(pickle.dumps(self.game_time_cache).hex())
             file.close()
         await self._http_client.close()
+        await super().shutdown()
 
     def create_total_games_cache(self):
         cache = []
@@ -213,12 +214,12 @@ class RockstarPlugin(Plugin):
         # unlocked achievements for the specified game. It uses the Social Club standard for authentication (a request
         # header named Authorization containing "Bearer [Bearer-Token]").
 
-        if games_cache[get_game_title_id_from_ros_title_id(game_id)]["achievementId"] is None or \
-                (games_cache[get_game_title_id_from_ros_title_id(game_id)]["isPreOrder"]):
+        title_id = games_cache[get_game_title_id_from_ros_title_id(game_id)]
+        if games_cache[title_id]["achievementId"] is None or \
+                (games_cache[title_id]["isPreOrder"]):
             return []
         log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
-                  get_game_title_id_from_ros_title_id(game_id) + " (Achievement ID: " +
-                  get_achievement_id_from_ros_title_id(game_id) + ")...")
+                  title_id + " (Achievement ID: " + get_achievement_id_from_ros_title_id(game_id) + ")...")
         # Now, we can begin getting the user's achievements for the specified game.
         achievement_id = get_achievement_id_from_ros_title_id(game_id)
         url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}&platform=pc&"
@@ -227,8 +228,8 @@ class RockstarPlugin(Plugin):
         if not str("achievements_" + achievement_id) in self._all_achievements_cache:
             # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
             # better to store it in a cache.
-            log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " +
-                      get_game_title_id_from_ros_title_id(game_id) + " is not in the persistent cache!")
+            log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
+                      "cache!")
             await self.update_achievements_cache(achievement_id)
         all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
         achievements_dict = unlocked_achievements["awardedAchievements"]
@@ -296,7 +297,7 @@ class RockstarPlugin(Plugin):
         return_list = []
         for i in range(0, len(friends_list)):
             friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
-            return_list.append(FriendInfo)
+            return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
                     break
@@ -331,7 +332,7 @@ class RockstarPlugin(Plugin):
         return_list = []
         for i in range(0, len(friends_list)):
             friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
-            return_list.append(FriendInfo)
+            return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
                     break
