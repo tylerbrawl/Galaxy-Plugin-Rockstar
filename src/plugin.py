@@ -15,7 +15,8 @@ import re
 import sys
 import webbrowser
 
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
+    ARE_ACHIEVEMENTS_IMPLEMENTED
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import BackendClient
@@ -208,53 +209,54 @@ class RockstarPlugin(Plugin):
             cache.append(self.create_game_from_title_id(title_id))
         return cache
 
-    async def get_unlocked_achievements(self, game_id, context):
-        # The Social Club API has an authentication endpoint located at https://scapi.rockstargames.com/achievements/
-        # awardedAchievements?title=[game-id]&platform=pc&rockstarId=[rockstar-ID], which returns a list of the user's
-        # unlocked achievements for the specified game. It uses the Social Club standard for authentication (a request
-        # header named Authorization containing "Bearer [Bearer-Token]").
+    if ARE_ACHIEVEMENTS_IMPLEMENTED:
+        async def get_unlocked_achievements(self, game_id, context):
+            # The Social Club API has an authentication endpoint located at https://scapi.rockstargames.com/
+            # achievements/awardedAchievements?title=[game-id]&platform=pc&rockstarId=[rockstar-ID], which returns a
+            # list of the user's unlocked achievements for the specified game. It uses the Social Club standard for
+            # authentication (a request header named Authorization containing "Bearer [Bearer-Token]").
 
-        title_id = games_cache[get_game_title_id_from_ros_title_id(game_id)]
-        if games_cache[title_id]["achievementId"] is None or \
-                (games_cache[title_id]["isPreOrder"]):
-            return []
-        log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
-                  title_id + " (Achievement ID: " + get_achievement_id_from_ros_title_id(game_id) + ")...")
-        # Now, we can begin getting the user's achievements for the specified game.
-        achievement_id = get_achievement_id_from_ros_title_id(game_id)
-        url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}&platform=pc&"
-               f"rockstarId={self._http_client.get_rockstar_id()}")
-        unlocked_achievements = await self._http_client.get_json_from_request_strict(url)
-        if not str("achievements_" + achievement_id) in self._all_achievements_cache:
-            # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
-            # better to store it in a cache.
-            log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
-                      "cache!")
-            await self.update_achievements_cache(achievement_id)
-        all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
-        achievements_dict = unlocked_achievements["awardedAchievements"]
-        achievements_list = []
-        for key, value in achievements_dict.items():
-            # What if an achievement is added to the Social Club after the cache was already made? In this event, we
-            # need to refresh the cache.
-            if int(key) > len(all_achievements):
+            title_id = get_game_title_id_from_ros_title_id(game_id)
+            if games_cache[title_id]["achievementId"] is None or \
+                    (games_cache[title_id]["isPreOrder"]):
+                return []
+            log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
+                      title_id + " (Achievement ID: " + get_achievement_id_from_ros_title_id(game_id) + ")...")
+            # Now, we can begin getting the user's achievements for the specified game.
+            achievement_id = get_achievement_id_from_ros_title_id(game_id)
+            url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}"
+                   f"&platform=pc&rockstarId={self._http_client.get_rockstar_id()}")
+            unlocked_achievements = await self._http_client.get_json_from_request_strict(url)
+            if not str("achievements_" + achievement_id) in self._all_achievements_cache:
+                # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
+                # better to store it in a cache.
+                log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
+                          "cache!")
                 await self.update_achievements_cache(achievement_id)
-                all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
-            achievement_num = key
-            unlock_time = await self.get_unix_epoch_time_from_date(value["dateAchieved"])
-            achievement_name = all_achievements[int(key) - 1]["name"]
-            achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
-        return achievements_list
+            all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+            achievements_dict = unlocked_achievements["awardedAchievements"]
+            achievements_list = []
+            for key, value in achievements_dict.items():
+                # What if an achievement is added to the Social Club after the cache was already made? In this event, we
+                # need to refresh the cache.
+                if int(key) > len(all_achievements):
+                    await self.update_achievements_cache(achievement_id)
+                    all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+                achievement_num = key
+                unlock_time = await self.get_unix_epoch_time_from_date(value["dateAchieved"])
+                achievement_name = all_achievements[int(key) - 1]["name"]
+                achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
+            return achievements_list
 
-    async def update_achievements_cache(self, achievement_id):
-        url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
-        all_achievements = await self._http_client.get_json_from_request_strict(url)
-        self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
-        log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
-        self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
-            all_achievements["achievements"]).hex()
-        log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
-        self.push_cache()
+        async def update_achievements_cache(self, achievement_id):
+            url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
+            all_achievements = await self._http_client.get_json_from_request_strict(url)
+            self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
+            log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
+            self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
+                all_achievements["achievements"]).hex()
+            log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
+            self.push_cache()
 
     @staticmethod
     async def get_unix_epoch_time_from_date(date):
