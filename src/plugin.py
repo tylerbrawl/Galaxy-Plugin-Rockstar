@@ -44,6 +44,9 @@ class RunningGameInfo(object):
     def get_start_time(self):
         return self._start_time
 
+    def update_start_time(self):
+        self._start_time = datetime.datetime.now().timestamp()
+
 
 class RockstarPlugin(Plugin):
     def __init__(self, reader, writer, token):
@@ -185,7 +188,7 @@ class RockstarPlugin(Plugin):
     async def shutdown(self):
         # At this point, we can write to a file to keep a cached copy of the user's played time.
         # This will prevent the play time from being erased if the user loses authentication.
-        if IS_WINDOWS:
+        if IS_WINDOWS and self.game_time_cache:
             # For the sake of convenience, we will store this file in the user's Documents folder.
             # Obviously, this feature is only compatible with (and relevant for) Windows machines.
             file_location = os.path.join(self.documents_location, "RockstarPlayTimeCache.txt")
@@ -479,6 +482,7 @@ class RockstarPlugin(Plugin):
         if title_id in self.running_games_info_list:
             # The game is running (or has been running).
             start_time = self.running_games_info_list[title_id].get_start_time()
+            self.running_games_info_list[title_id].update_start_time()
             current_time = datetime.datetime.now().timestamp()
             minutes_passed = (current_time - start_time) / 60
             if not self.running_games_info_list[title_id].get_pid():
@@ -497,7 +501,7 @@ class RockstarPlugin(Plugin):
                     'time_played': minutes_passed,
                     'last_played': current_time
                 }
-                return GameTime(game_id, minutes_passed, int(current_time))
+                return GameTime(game_id, int(minutes_passed), int(current_time))
         else:
             # The game is no longer running (and there is no relevant entry in self.running_games_info_list).
             if title_id not in self.game_time_cache:
