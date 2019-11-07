@@ -84,7 +84,7 @@ class LocalClient:
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
-        log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
+        log.debug(f"ROCKSTAR_LAUNCHER_PATCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
         retries = 30
