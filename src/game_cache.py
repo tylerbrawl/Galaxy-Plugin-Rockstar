@@ -7,6 +7,16 @@ from galaxy.api.consts import LicenseType
 # All other data values can be found from https://gamedownloads-rockstargames-com.akamaized.net/public/
 # title_metadata.json.
 games_cache = {
+    "launcher": {
+        "friendlyName": "Rockstar Games Launcher",
+        "guid": "Rockstar Games Launcher",
+        "rosTitleId": 21,
+        "onlineTitleId": None,
+        "launchEXE": "Launcher.exe",
+        "achievementId": None,
+        "licenseInfo": LicenseInfo(LicenseType.Unknown),
+        "isPreOrder": False
+    },
     "gtasa": {
         "friendlyName": "Grand Theft Auto: San Andreas",
         "guid": "Grand Theft Auto: San Andreas",
@@ -97,7 +107,7 @@ games_cache = {
         "achievementId": "rdr2",  # The achievements link for Red Dead Redemption 2 is currently unavailable, as the
         # game has not been released yet.
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
-        "isPreOrder": True
+        "isPreOrder": False
     }
 }
 

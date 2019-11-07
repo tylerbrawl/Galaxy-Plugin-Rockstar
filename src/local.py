@@ -7,7 +7,7 @@ import locale
 
 from galaxy.proc_tools import pids
 
-from consts import WINDOWS_UNINSTALL_KEY
+from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA
 from game_cache import games_cache
 
 
@@ -32,7 +32,10 @@ class LocalClient:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + "Rockstar Games Launcher")
             dir, type = QueryValueEx(key, "InstallLocation")
             self.installer_location = dir[:-1] + "\\Launcher.exe\""
-            log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            else:
+                log.debug("ROCKSTAR_INSTALLER_PATH: ***")
         except WindowsError:
             self.installer_location = None
         return self.installer_location
@@ -62,22 +65,45 @@ class LocalClient:
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
+        path = path[:path.rindex('"')]
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
+
+        '''The old method below for launching games has been deprecated with the release of RDR 2.
         exe_name = games_cache[title_id]['launchEXE']
-        game_path = path[:-3] + "\\" + exe_name + "\""
+        game_path = path[:path.rindex('"')] + "\\" + exe_name + "\""
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
         subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
+        '''
+
+        log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {path}\\{games_cache[title_id]['launchEXE']}...")
+        subprocess.call(self.installer_location + " -launchTitleInFolder=" + path, stdout=self.FNULL, stderr=self.FNULL,
+                        shell=False)
+        launcher_pid = None
+        while not launcher_pid:
+            await asyncio.sleep(1)
+            launcher_pid = await self.game_pid_from_tasklist("launcher")
+        log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
-        retries = 60
-        while retries > 0:
+        retries = 30
+        while True:
             await asyncio.sleep(1)
             pid = await self.game_pid_from_tasklist(title_id)
             if pid:
                 return pid
             retries -= 1
+            if retries == 0:
+                # If it has been this long and the game still has not launched, then it might be downloading an update.
+                # We should refresh the retries counter if the Rockstar Games Launcher is still running; otherwise, we
+                # return None.
+                if check_if_process_exists(launcher_pid):
+                    log.debug(f"ROCKSTAR_LAUNCH_WAITING: The game {title_id} has not launched yet, but the Rockstar "
+                              f"Games Launcher is still running. Restarting the loop...")
+                    retries += 30
+                else:
+                    return None
 
     def install_game_from_title_id(self, title_id):
         if not self.installer_location:

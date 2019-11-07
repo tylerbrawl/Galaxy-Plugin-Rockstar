@@ -1,10 +1,12 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
 from galaxy.api.consts import Platform
-from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo, Achievement
-from galaxy.api.errors import InvalidCredentials, AuthenticationRequired
+from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo, Achievement, \
+    GameTime
+from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, NetworkError, UnknownError
 
 from file_read_backwards import FileReadBackwards
 import asyncio
+import dataclasses
 import datetime
 import logging as log
 import os
@@ -13,7 +15,8 @@ import re
 import sys
 import webbrowser
 
-from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS
+from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
+    ARE_ACHIEVEMENTS_IMPLEMENTED
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
     get_achievement_id_from_ros_title_id
 from http_client import BackendClient
@@ -22,6 +25,28 @@ from version import __version__
 if IS_WINDOWS:
     import ctypes.wintypes
     from local import LocalClient, check_if_process_exists
+
+
+@dataclasses.dataclass
+class RunningGameInfo(object):
+    _pid = None
+    _start_time = None
+
+    def set_info(self, pid):
+        self._pid = pid
+        self._start_time = datetime.datetime.now().timestamp()
+
+    def get_pid(self):
+        return self._pid
+
+    def clear_pid(self):
+        self._pid = None
+
+    def get_start_time(self):
+        return self._start_time
+
+    def update_start_time(self):
+        self._start_time = datetime.datetime.now().timestamp()
 
 
 class RockstarPlugin(Plugin):
@@ -35,7 +60,8 @@ class RockstarPlugin(Plugin):
         self.friends_cache = []
         self.owned_games_cache = []
         self.local_games_cache = {}
-        self.running_games_pids = {}
+        self.game_time_cache = {}
+        self.running_games_info_list = {}
         self.game_is_loading = True
         self.checking_for_new_games = False
         self.updating_game_statuses = False
@@ -50,19 +76,46 @@ class RockstarPlugin(Plugin):
         return self._http_client.is_authenticated()
 
     def handshake_complete(self):
+        game_time_cache_in_persistent_cache = False
         for key, value in self.persistent_cache.items():
             if "achievements_" in key:
                 log.debug("ROCKSTAR_CACHE_IMPORT: Importing " + key + " from persistent cache...")
                 self._all_achievements_cache[key] = pickle.loads(bytes.fromhex(value))
+            elif key == "game_time_cache":
+                self.game_time_cache = pickle.loads(bytes.fromhex(value))
+                game_time_cache_in_persistent_cache = True
+        if IS_WINDOWS and not game_time_cache_in_persistent_cache:
+            # The game time cache was not found in the persistent cache, so the plugin will instead attempt to get the
+            # cache from the user's file stored on their disk.
+            file_location = os.path.join(self.documents_location, "RockstarPlayTimeCache.txt")
+            try:
+                file = open(file_location, "r")
+                for line in file.readlines():
+                    if line[:1] != "#":
+                        log.debug("ROCKSTAR_LOCAL_GAME_TIME_FROM_FILE: " + str(pickle.loads(bytes.fromhex(line))))
+                        self.game_time_cache = pickle.loads(bytes.fromhex(line))
+                        break
+                if not self.game_time_cache:
+                    log.warning("ROCKSTAR_NO_GAME_TIME: The user's played time could not be found in neither the "
+                                "persistent cache nor the designated local file. Let's hope that the user is new...")
+            except FileNotFoundError:
+                log.warning("ROCKSTAR_NO_GAME_TIME: The user's played time could not be found in neither the persistent"
+                            " cache nor the designated local file. Let's hope that the user is new...")
 
     async def authenticate(self, stored_credentials=None):
-        self._http_client.create_session(stored_credentials)
+        try:
+            self._http_client.create_session(stored_credentials)
+        except KeyError:
+            log.error("ROCKSTAR_OLD_LOG_IN: The user has likely previously logged into the plugin with a version less "
+                      "than v0.3, and their credentials might be corrupted. Forcing a log-out...")
+            raise InvalidCredentials()
         if not stored_credentials:
             return NextStep("web_session", AUTH_PARAMS)
         try:
             log.info("INFO: The credentials were successfully obtained.")
-            # cookies = pickle.loads(bytes.fromhex(stored_credentials['session_object'])).cookies
-            # log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
+            if LOG_SENSITIVE_DATA:
+                cookies = pickle.loads(bytes.fromhex(stored_credentials['cookie_jar']))
+                log.debug("ROCKSTAR_COOKIES_FROM_HEX: " + str(cookies))  # sensitive data hidden by default
             # for cookie in cookies:
             #   self._http_client.update_cookies({cookie.name: cookie.value})
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
@@ -72,6 +125,8 @@ class RockstarPlugin(Plugin):
             log.info("INFO: The stored credentials were successfully parsed. Beginning authentication...")
             user = await self._http_client.authenticate()
             return Authentication(user_id=user['rockstar_id'], user_name=user['display_name'])
+        except (NetworkError, UnknownError):
+            raise
         except Exception as e:
             log.warning("ROCKSTAR_AUTH_WARNING: The exception " + repr(e) + " was thrown, presumably because of "
                         "outdated credentials. Attempting to get new credentials...")
@@ -91,19 +146,32 @@ class RockstarPlugin(Plugin):
                 self._http_client.set_current_auth_token(cookie['value'])
             if cookie['name'] == "RMT":
                 if cookie['value'] != "":
-                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                    if LOG_SENSITIVE_DATA:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: " + cookie['value'])
+                    else:
+                        log.debug("ROCKSRAR_REMEMBER_ME: Got RMT: ***")  # Only asterisks are shown here for consistency
+                        # with the output when the user has a blank RMT from multi-factor authentication.
                     self._http_client.set_refresh_token(cookie['value'])
                 else:
-                    log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: [Blank!]")
+                    if LOG_SENSITIVE_DATA:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: [Blank!]")
+                    else:
+                        log.debug("ROCKSTAR_REMEMBER_ME: Got RMT: ***")
                     self._http_client.set_refresh_token('')
             if cookie['name'] == "fingerprint":
-                log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: " + cookie['value'].replace("$", ";"))
+                else:
+                    log.debug("ROCKSTAR_FINGERPRINT: Got fingerprint: ***")
                 self._http_client.set_fingerprint(cookie['value'].replace("$", ";"))
                 # We will not add the fingerprint as a cookie to the session; it will instead be stored with the user's
                 # credentials.
                 continue
             if re.search("^rsso", cookie['name']):
-                log.debug("ROCKSTAR_RSSO: Got " + cookie['name'] + ": " + cookie['value'])
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_RSSO: Got " + cookie['name'] + ": " + cookie['value'])
+                else:
+                    log.debug(f"ROCKSTAR_RSSO: Got rsso-***: {cookie['value'][:5]}***{cookie['value'][-3:]}")
             cookie_object = {
                 "name": cookie['name'],
                 "value": cookie['value'],
@@ -119,7 +187,21 @@ class RockstarPlugin(Plugin):
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):
+        # At this point, we can write to a file to keep a cached copy of the user's played time.
+        # This will prevent the play time from being erased if the user loses authentication.
+        if IS_WINDOWS and self.game_time_cache:
+            # For the sake of convenience, we will store this file in the user's Documents folder.
+            # Obviously, this feature is only compatible with (and relevant for) Windows machines.
+            file_location = os.path.join(self.documents_location, "RockstarPlayTimeCache.txt")
+            file = open(file_location, "w+")
+            file.write("# This file contains a cached copy of the user's play time for the Rockstar plugin for GOG "
+                       "Galaxy 2.0.\n")
+            file.write("# DO NOT EDIT THIS FILE IN ANY WAY, LEST THE CACHE GETS CORRUPTED AND YOUR PLAY TIME IS LOST!\n"
+                       )
+            file.write(pickle.dumps(self.game_time_cache).hex())
+            file.close()
         await self._http_client.close()
+        await super().shutdown()
 
     def create_total_games_cache(self):
         cache = []
@@ -127,53 +209,54 @@ class RockstarPlugin(Plugin):
             cache.append(self.create_game_from_title_id(title_id))
         return cache
 
-    async def get_unlocked_achievements(self, game_id, context):
-        # The Social Club API has an authentication endpoint located at https://scapi.rockstargames.com/achievements/
-        # awardedAchievements?title=[game-id]&platform=pc&rockstarId=[rockstar-ID], which returns a list of the user's
-        # unlocked achievements for the specified game. It uses the Social Club standard for authentication (a request
-        # header named Authorization containing "Bearer [Bearer-Token]").
+    if ARE_ACHIEVEMENTS_IMPLEMENTED:
+        async def get_unlocked_achievements(self, game_id, context):
+            # The Social Club API has an authentication endpoint located at https://scapi.rockstargames.com/
+            # achievements/awardedAchievements?title=[game-id]&platform=pc&rockstarId=[rockstar-ID], which returns a
+            # list of the user's unlocked achievements for the specified game. It uses the Social Club standard for
+            # authentication (a request header named Authorization containing "Bearer [Bearer-Token]").
 
-        if games_cache[get_game_title_id_from_ros_title_id(game_id)]["achievementId"] is None or \
-                (games_cache[get_game_title_id_from_ros_title_id(game_id)]["isPreOrder"]):
-            return []
-        log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
-                  get_game_title_id_from_ros_title_id(game_id) + " (Achievement ID: " +
-                  get_achievement_id_from_ros_title_id(game_id) + ")...")
-        # Now, we can begin getting the user's achievements for the specified game.
-        achievement_id = get_achievement_id_from_ros_title_id(game_id)
-        url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}&platform=pc&"
-               f"rockstarId={self._http_client.get_rockstar_id()}")
-        unlocked_achievements = await self._http_client.get_json_from_request_strict(url)
-        if not str("achievements_" + achievement_id) in self._all_achievements_cache:
-            # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
-            # better to store it in a cache.
-            log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " +
-                      get_game_title_id_from_ros_title_id(game_id) + " is not in the persistent cache!")
-            await self.update_achievements_cache(achievement_id)
-        all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
-        achievements_dict = unlocked_achievements["awardedAchievements"]
-        achievements_list = []
-        for key, value in achievements_dict.items():
-            # What if an achievement is added to the Social Club after the cache was already made? In this event, we
-            # need to refresh the cache.
-            if int(key) > len(all_achievements):
+            title_id = get_game_title_id_from_ros_title_id(game_id)
+            if games_cache[title_id]["achievementId"] is None or \
+                    (games_cache[title_id]["isPreOrder"]):
+                return []
+            log.debug("ROCKSTAR_ACHIEVEMENT_CHECK: Beginning achievements check for " +
+                      title_id + " (Achievement ID: " + get_achievement_id_from_ros_title_id(game_id) + ")...")
+            # Now, we can begin getting the user's achievements for the specified game.
+            achievement_id = get_achievement_id_from_ros_title_id(game_id)
+            url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}"
+                   f"&platform=pc&rockstarId={self._http_client.get_rockstar_id()}")
+            unlocked_achievements = await self._http_client.get_json_from_request_strict(url)
+            if not str("achievements_" + achievement_id) in self._all_achievements_cache:
+                # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
+                # better to store it in a cache.
+                log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
+                          "cache!")
                 await self.update_achievements_cache(achievement_id)
-                all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
-            achievement_num = key
-            unlock_time = await self.get_unix_epoch_time_from_date(value["dateAchieved"])
-            achievement_name = all_achievements[int(key) - 1]["name"]
-            achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
-        return achievements_list
+            all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+            achievements_dict = unlocked_achievements["awardedAchievements"]
+            achievements_list = []
+            for key, value in achievements_dict.items():
+                # What if an achievement is added to the Social Club after the cache was already made? In this event, we
+                # need to refresh the cache.
+                if int(key) > len(all_achievements):
+                    await self.update_achievements_cache(achievement_id)
+                    all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+                achievement_num = key
+                unlock_time = await self.get_unix_epoch_time_from_date(value["dateAchieved"])
+                achievement_name = all_achievements[int(key) - 1]["name"]
+                achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
+            return achievements_list
 
-    async def update_achievements_cache(self, achievement_id):
-        url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
-        all_achievements = await self._http_client.get_json_from_request_strict(url)
-        self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
-        log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to persistent cache...")
-        self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
-            all_achievements["achievements"]).hex()
-        log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
-        self.push_cache()
+        async def update_achievements_cache(self, achievement_id):
+            url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
+            all_achievements = await self._http_client.get_json_from_request_strict(url)
+            self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
+            log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
+            self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
+                all_achievements["achievements"]).hex()
+            log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
+            self.push_cache()
 
     @staticmethod
     async def get_unix_epoch_time_from_date(date):
@@ -198,8 +281,16 @@ class RockstarPlugin(Plugin):
         # We first need to get the number of friends.
         url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                "pageIndex=0&pageSize=30")
-        current_page = await self._http_client.get_json_from_request_strict(url)
-        log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
+        try:
+            current_page = await self._http_client.get_json_from_request_strict(url)
+        except TimeoutError:
+            log.warning("ROCKSTAR_FRIENDS_TIMEOUT: The request to get the user's friends at page index 0 timed out. "
+                        "Returning the cached list...")
+            return self.friends_cache
+        if LOG_SENSITIVE_DATA:
+            log.debug("ROCKSTAR_FRIENDS_REQUEST: " + str(current_page))
+        else:
+            log.debug("ROCKSTAR_FRIENDS_REQUEST: ***")
         num_friends = current_page['rockstarAccountList']['totalFriends']
         num_pages_required = num_friends / 30 if num_friends % 30 != 0 else (num_friends / 30) - 1
 
@@ -208,39 +299,53 @@ class RockstarPlugin(Plugin):
         return_list = []
         for i in range(0, len(friends_list)):
             friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
-            return_list.append(FriendInfo)
+            return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
                     break
             else:
                 self.friends_cache.append(friend)
                 self.add_friend(friend)
-            log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                      str(friend.user_id) + ")")
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
+                          str(friend.user_id) + ")")
+            else:
+                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
             for i in range(1, int(num_pages_required + 1)):
-                url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
-                       "pageIndex=" + str(i) + "&pageSize=30")
-                return_list.append(friend for friend in await self._get_friends(url))
+                try:
+                    url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
+                           "pageIndex=" + str(i) + "&pageSize=30")
+                    return_list.append(friend for friend in await self._get_friends(url))
+                except TimeoutError:
+                    log.warning(f"ROCKSTAR_FRIENDS_TIMEOUT: The request to get the user's friends at page index {i} "
+                                f"timed out. Returning the cached list...")
+                    return self.friends_cache
         return return_list
 
     async def _get_friends(self, url):
-        current_page = self._http_client.get_json_from_request_strict(url)
+        try:
+            current_page = await self._http_client.get_json_from_request_strict(url)
+        except TimeoutError:
+            raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
             friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
-            return_list.append(FriendInfo)
+            return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
                     break
             else:  # An else-statement occurs after a for-statement if the latter finishes WITHOUT breaking.
                 self.friends_cache.append(friend)
                 self.add_friend(friend)
-            log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                      str(friend.user_id) + ")")
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
+                          str(friend.user_id) + ")")
+            else:
+                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
         return return_list
 
     async def get_owned_games(self):
@@ -282,7 +387,11 @@ class RockstarPlugin(Plugin):
                     log_file_append = ".0" + str(current_log_count)
                 log_file = os.path.join(self.documents_location, "Rockstar Games\\Launcher\\launcher" + log_file_append
                                         + ".log")
-                log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_LOG_LOCATION: Checking the file " + log_file + "...")
+                else:
+                    log.debug("ROCKSTAR_LOG_LOCATION: Checking the file ***...")  # The path to the Launcher log file
+                    # likely contains the user's PC profile name (C:\Users\[Name]\Documents...).
                 owned_title_ids = await self.parse_log_file(log_file, owned_title_ids, online_check_success)
                 break
             except NoGamesInLogException:
@@ -367,8 +476,52 @@ class RockstarPlugin(Plugin):
         else:
             raise NoLogFoundException()
 
+    async def get_game_time(self, game_id, context):
+        # Although the Rockstar Games Launcher does track the played time for each game, there is currently no known
+        # method for accessing this information. As such, game time will be recorded when games are launched through the
+        # Galaxy 2.0 client.
+
+        title_id = get_game_title_id_from_ros_title_id(game_id)
+        if title_id in self.running_games_info_list:
+            # The game is running (or has been running).
+            start_time = self.running_games_info_list[title_id].get_start_time()
+            self.running_games_info_list[title_id].update_start_time()
+            current_time = datetime.datetime.now().timestamp()
+            minutes_passed = (current_time - start_time) / 60
+            if not self.running_games_info_list[title_id].get_pid():
+                # The PID has been set to None, which means that the game has exited (see self.check_game_status). Now
+                # that the start time is recorded, the game can be safely removed from the list of running games.
+                del self.running_games_info_list[title_id]
+            if self.game_time_cache[title_id]['time_played']:
+                # The game has been played before, so the time will need to be added to the existing cached time.
+                total_time_played = self.game_time_cache[title_id]['time_played'] + minutes_passed
+                self.game_time_cache[title_id]['time_played'] = total_time_played
+                self.game_time_cache[title_id]['last_played'] = current_time
+                return GameTime(game_id, int(total_time_played), int(current_time))
+            else:
+                # The game has not been played before, so a new entry in the game_time_cache dictionary must be made.
+                self.game_time_cache[title_id] = {
+                    'time_played': minutes_passed,
+                    'last_played': current_time
+                }
+                return GameTime(game_id, int(minutes_passed), int(current_time))
+        else:
+            # The game is no longer running (and there is no relevant entry in self.running_games_info_list).
+            if title_id not in self.game_time_cache:
+                self.game_time_cache[title_id] = {
+                    'time_played': None,
+                    'last_played': None
+                }
+            return GameTime(game_id, self.game_time_cache[title_id]['time_played'],
+                            self.game_time_cache[title_id]['last_played'])
+
+    def game_times_import_complete(self):
+        log.debug("ROCKSTAR_GAME_TIME: Pushing the cache of played game times to the persistent cache...")
+        self.persistent_cache['game_time_cache'] = pickle.dumps(self.game_time_cache).hex()
+        self.push_cache()
+
     async def open_rockstar_browser(self):
-        # This method allows the user to install the Rockstar Games Launcher, it it is not already installed.
+        # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.
         url = "https://www.rockstargames.com/downloads"
 
         log.info(f"Opening Rockstar website {url}")
@@ -381,10 +534,13 @@ class RockstarPlugin(Plugin):
         if game_installed:
             state |= LocalGameState.Installed
 
-            if check_if_process_exists(self.running_games_pids.get(title_id)):
+            if (title_id in self.running_games_info_list and
+                    check_if_process_exists(self.running_games_info_list[title_id].get_pid())):
                 state |= LocalGameState.Running
-            else:
-                self.running_games_pids[title_id] = None
+            elif title_id in self.running_games_info_list:
+                # We will leave the info in the list, because it still contains the game start time for game time
+                # tracking. However, we will set the PID to None to indicate that the game has been closed.
+                self.running_games_info_list[title_id].clear_pid()
 
         return LocalGame(str(self.games_cache[title_id]["rosTitleId"]), state)
 
@@ -417,12 +573,28 @@ class RockstarPlugin(Plugin):
             new_local_game = self.check_game_status(title_id)
             if new_local_game != current_local_game:
                 log.debug(f"ROCKSTAR_LOCAL_CHANGE: The status for {title_id} has changed from: {current_local_game} to "
-                          f"{new_local_game}")
+                          f"{new_local_game}.")
                 self.update_local_game_status(new_local_game)
                 self.local_games_cache[title_id] = new_local_game
 
         await asyncio.sleep(5)
         self.updating_game_statuses = False
+
+    def list_running_game_pids(self):
+        info_list = []
+        for key, value in self.running_games_info_list.items():
+            info_list.append(value.get_pid())
+        return str(info_list)
+
+    if IS_WINDOWS:
+        async def launch_platform_client(self):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
+            pid = await self._local_client.launch_game_from_title_id("launcher")
+            if not pid:
+                log.warning("ROCKSTAR_LAUNCHER_FAILED: The Rockstar Games Launcher could not be launched!")
 
     if IS_WINDOWS:
         async def launch_game(self, game_id):
@@ -433,8 +605,9 @@ class RockstarPlugin(Plugin):
             title_id = get_game_title_id_from_ros_title_id(game_id)
             game_pid = await self._local_client.launch_game_from_title_id(title_id)
             if game_pid:
-                self.running_games_pids[title_id] = game_pid
-                log.debug(f"ROCKSTAR_PIDS: {self.running_games_pids}")
+                self.running_games_info_list[title_id] = RunningGameInfo()
+                self.running_games_info_list[title_id].set_info(game_pid)
+                log.debug(f"ROCKSTAR_PIDS: {self.list_running_game_pids()}")
                 local_game = LocalGame(game_id, LocalGameState.Running | LocalGameState.Installed)
                 self.update_local_game_status(local_game)
                 self.local_games_cache[title_id] = local_game
