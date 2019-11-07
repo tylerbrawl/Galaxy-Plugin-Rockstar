@@ -137,6 +137,7 @@ class BackendClient:
 
     def set_current_auth_token(self, token):
         self._current_auth_token = token
+        self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': token})
 
     def get_current_auth_token(self):
         return self._current_auth_token
@@ -150,6 +151,7 @@ class BackendClient:
     def set_refresh_token(self, token):
         expiration_time = time() + (3600 * 24 * 365 * 20)
         self.refresh_token.set_token(token, expiration_time)
+        self._current_session.cookie_jar.update_cookies({"RMT": token})
 
     def set_refresh_token_absolute(self, token):
         self.refresh_token = token
@@ -185,12 +187,10 @@ class BackendClient:
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
-            s = create_client_session()
-            resp = await s.get(url, headers=headers)
-            await s.close()
+            resp = await self._current_session.get(url, headers=headers)
             return await resp.json()
         except Exception as e:
-            log.warning(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
+            log.exception(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
             self.set_auth_lost_callback(True)
             await self.authenticate()
             return await self.get_json_from_request_strict(url, include_default_headers, additional_headers)
@@ -220,22 +220,25 @@ class BackendClient:
             headers = {
                 "accept": "application/json, text/plain, */*",
                 "connection": "keep-alive",
-                "cookie": "ScAuthTokenData=" + self._current_auth_token,
+                "cookie": "ScAuthTokenData=" + old_auth,
                 "host": "www.rockstargames.com",
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
             }
             resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
-                                                   allow_redirects=False, timeout=5)
+                                                   allow_redirects=False)
             # aiohttp.ClientSession allows you to get a specified cookie from the previous response.
-            new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
+            # new_auth = self._current_session.cookie_jar.get('ScAuthTokenData', domain="www.rockstargames.com")
+            filtered_cookies = self._current_session.cookie_jar.filter_cookies('www.rockstargames.com')
+            new_auth = filtered_cookies['ScAuthTokenData'].value
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_NEW_AUTH: {new_auth}")
             else:
-                log.debug(f"ROCKSTAR_NEW_AUTH {str(new_auth)[:5]}***{str(new_auth[-3:])}")
+                log.debug(f"ROCKSTAR_NEW_AUTH: {str(new_auth)[:5]}***{str(new_auth[-3:])}")
             self._current_auth_token = new_auth
             if new_auth != old_auth:
                 log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
+                self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': new_auth})
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
             return await resp.json()
@@ -291,7 +294,11 @@ class BackendClient:
             for morsel in self._current_session.cookie_jar.__iter__():
                 if re.search("^rsso", morsel.key):
                     rsso_name = morsel.key
+                    if LOG_SENSITIVE_DATA:
+                        log.debug(f"ROCKSTAR_RSSO_NAME: {rsso_name}")
                     rsso_value = morsel.value
+                    if LOG_SENSITIVE_DATA:
+                        log.debug(f"ROCKSTAR_RSSO_VALUE: {rsso_value}")
                     break
             headers = {
                 "Accept": "application/json, text/plain, */*",
@@ -303,14 +310,15 @@ class BackendClient:
                 "X-Requested-With": "XMLHttpRequest"
             }
             data = {"fingerprint": self._fingerprint}
-            refresh_resp = await self._current_session.post(url, data=data, headers=headers, timeout=5)
+            refresh_resp = await self._current_session.post(url, data=data, headers=headers)
             refresh_code = await refresh_resp.text()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
             # We need to set the new refresh token here, if it is updated.
-            if "RMT" in refresh_resp.cookies:
-                self.set_refresh_token(self._current_session.cookie_jar.get('RMT'))
-            else:
+            filtered_cookies = self._current_session.cookie_jar.filter_cookies("signin.rockstargames.com")
+            try:
+                self.set_refresh_token(filtered_cookies['RMT'].value)
+            except KeyError:
                 if LOG_SENSITIVE_DATA:
                     log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not "
                               "enabled two-factor authentication. Proceeding anyways...")
@@ -318,7 +326,7 @@ class BackendClient:
             # The Social Club API will not grant the user a new ScAuthTokenData token if they already have one that is
             # relevant, so when refreshing the credentials, the old token is deleted here.
             old_auth = self._current_auth_token
-            self._current_session.cookie_jar.remove_cookie('ScAuthTokenData', domain='www.rockstargames.com')
+            # self._current_session.cookie_jar.remove_cookie('ScAuthTokenData', domain='www.rockstargames.com')
             self._current_auth_token = None
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
@@ -336,7 +344,7 @@ class BackendClient:
             }
             data = {"code": refresh_code}
             # log.debug("ROCKSTAR_CODE: " + data['code'])
-            final_request = await self._current_session.post(url, json=data, headers=headers, timeout=5)
+            final_request = await self._current_session.post(url, json=data, headers=headers)
             # log.debug("ROCKSTAR_SENT_CODE: " + str(final_request.request.body))
             final_json = await final_request.json()
             if LOG_SENSITIVE_DATA:
