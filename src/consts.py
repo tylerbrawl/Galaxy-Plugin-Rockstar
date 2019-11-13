@@ -3,7 +3,7 @@ import sys
 
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
 
-LOG_SENSITIVE_DATA = False
+LOG_SENSITIVE_DATA = True
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
@@ -23,7 +23,7 @@ AUTH_PARAMS = {
     "window_title": "Login to Rockstar Games Social Club",
     "window_width": 700,
     "window_height": 600,
-    "start_uri": "https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/index.html",
+    "start_uri": "http://127.0.0.1:8000",
     "end_uri_regex": r"https://www.rockstargames.com/auth/get-user.json.*"
 }
 
