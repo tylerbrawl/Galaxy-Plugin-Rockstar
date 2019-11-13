@@ -8,17 +8,13 @@ from file_read_backwards import FileReadBackwards
 import asyncio
 import dataclasses
 import datetime
-import http.server
 import logging as log
 import os
 import pickle
 import re
-import socketserver
 import sys
-import threading
 import webbrowser
 
-from auth_handler import RockstarAuthHandler
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
     ARE_ACHIEVEMENTS_IMPLEMENTED
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
@@ -58,8 +54,6 @@ class RockstarPlugin(Plugin):
         super().__init__(Platform.Rockstar, __version__, reader, writer, token)
         self.games_cache = games_cache
         self._http_client = BackendClient(self.store_credentials)
-        self.httpd = None
-        self.httpd_thread = None
         self._local_client = None
         self.total_games_cache = self.create_total_games_cache()
         self._all_achievements_cache = {}
@@ -80,6 +74,11 @@ class RockstarPlugin(Plugin):
 
     def is_authenticated(self):
         return self._http_client.is_authenticated()
+
+    @staticmethod
+    def loads_js(file):
+        with open(os.path.join(__file__, '..', 'js', file), 'r') as f:
+            return f.read()
 
     def handshake_complete(self):
         game_time_cache_in_persistent_cache = False
@@ -116,12 +115,15 @@ class RockstarPlugin(Plugin):
                       "than v0.3, and their credentials might be corrupted. Forcing a log-out...")
             raise InvalidCredentials()
         if not stored_credentials:
-            if not self.httpd:
-                self.httpd = http.server.HTTPServer(('', 8000), RockstarAuthHandler)
-                self.httpd_thread = threading.Thread(target=self.httpd.serve_forever)
-                self.httpd_thread.daemon = True
-                self.httpd_thread.start()
-            return NextStep("web_session", AUTH_PARAMS)
+            # We will create the fingerprint JavaScript dictionary here.
+            fingerprint_js = {
+                r'https://www.rockstargames.com/': [
+                    self.loads_js("fingerprint2.js"),
+                    self.loads_js("HashGen.js"),
+                    self.loads_js("GenerateFingerprint.js")
+                ]
+            }
+            return NextStep("web_session", AUTH_PARAMS, js=fingerprint_js)
         try:
             log.info("INFO: The credentials were successfully obtained.")
             if LOG_SENSITIVE_DATA:
@@ -151,11 +153,6 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials()
 
     async def pass_login_credentials(self, step, credentials, cookies):
-        if self.httpd:
-            self.httpd.shutdown()
-            self.httpd = None
-            self.httpd_thread.join()
-            self.httpd_thread = None
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
             if cookie['name'] == "ScAuthTokenData":
