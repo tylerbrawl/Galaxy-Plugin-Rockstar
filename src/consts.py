@@ -3,7 +3,7 @@ import sys
 
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
 
-LOG_SENSITIVE_DATA = True
+LOG_SENSITIVE_DATA = False
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
