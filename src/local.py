@@ -71,21 +71,14 @@ class LocalClient:
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
-        path = path[:path.rindex('"')]
+        path = path[:path.rindex('"')] if '"' in path else path
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
-
-        '''The old method below for launching games has been deprecated with the release of RDR 2.
-        exe_name = games_cache[title_id]['launchEXE']
-        game_path = path[:path.rindex('"')] + "\\" + exe_name + "\""
+        game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
-        '''
-
-        log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {path}\\{games_cache[title_id]['launchEXE']}...")
-        subprocess.call(self.installer_location + " -launchTitleInFolder=" + path, stdout=self.FNULL, stderr=self.FNULL,
-                        shell=False)
+        subprocess.call(f'{game_path} -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
+                        stderr=self.FNULL, shell=False)
         launcher_pid = None
         while not launcher_pid:
             await asyncio.sleep(1)

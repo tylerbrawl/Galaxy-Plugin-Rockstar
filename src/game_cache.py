@@ -12,7 +12,7 @@ games_cache = {
         "guid": "Rockstar Games Launcher",
         "rosTitleId": 21,
         "onlineTitleId": None,
-        "launchEXE": "LauncherPatcher.exe",
+        "launchEXE": "Launcher.exe",
         "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.Unknown),
         "isPreOrder": False
