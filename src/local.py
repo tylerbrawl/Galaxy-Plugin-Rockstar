@@ -50,12 +50,6 @@ class LocalClient:
             # Console Spam (Enable this if you need to.)
             return None
 
-    def does_exe_exist(self, exe_name):
-        tasklist_output = subprocess.Popen(f'tasklist /FI "IMAGENAME eq {exe_name}"', stdout=subprocess.PIPE)
-        for line in tasklist_output.stdout:
-            new_line = line.decode(locale.getpreferredencoding())
-            return new_line != 'INFO: No tasks are running which match the specified criteria.'
-
     async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
         find_actual_pid = subprocess.Popen(
@@ -97,7 +91,7 @@ class LocalClient:
                 # If it has been this long and the game still has not launched, then it might be downloading an update.
                 # We should refresh the retries counter if the Rockstar Games Launcher is still running; otherwise, we
                 # return None.
-                if self.does_exe_exist("Launcher.exe"):
+                if await self.game_pid_from_tasklist("launcher"):
                     log.debug(f"ROCKSTAR_LAUNCH_WAITING: The game {title_id} has not launched yet, but the Rockstar "
                               f"Games Launcher is still running. Restarting the loop...")
                     retries += 30
