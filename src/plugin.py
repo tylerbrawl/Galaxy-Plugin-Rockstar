@@ -1,6 +1,6 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
 from galaxy.api.consts import Platform
-from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo, Achievement, \
+from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, UserInfo, Achievement, \
     GameTime
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, NetworkError, UnknownError
 
@@ -282,7 +282,7 @@ class RockstarPlugin(Plugin):
         return int(datetime.datetime(year, month, day, hour, minute, second).timestamp())
 
     async def get_friends(self):
-        # NOTE: This will return a list of type FriendInfo.
+        # NOTE: This will return a list of type UserInfo.
         # The Social Club website returns a list of the current user's friends through the url
         # https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&pageIndex=0&pageSize=30.
         # The nickname URL parameter is left blank because the website instead uses the bearer token to get the correct
@@ -311,7 +311,12 @@ class RockstarPlugin(Plugin):
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
-            friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
+            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/s"
+            profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
+            friend = UserInfo(friends_list[i]['rockstarId'],
+                              friends_list[i]['displayName'],
+                              avatar_url=avatar_uri,
+                              profile_url=profile_uri)
             return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
@@ -346,7 +351,12 @@ class RockstarPlugin(Plugin):
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
-            friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
+            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/s"
+            profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
+            friend = UserInfo(friends_list[i]['rockstarId'],
+                              friends_list[i]['displayName'],
+                              avatar_url=avatar_uri,
+                              profile_url=profile_uri)
             return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:

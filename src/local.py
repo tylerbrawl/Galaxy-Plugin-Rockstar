@@ -65,13 +65,13 @@ class LocalClient:
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
-        path = path[:path.rindex('"')] if '"' in path else path
+        path = path.replace('"', '')  # path = path[:path.rindex('"')] if '"' in path else path
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.call(f'{game_path} -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
+        subprocess.call(f'"{game_path}" -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
                         stderr=self.FNULL, shell=False)
         launcher_pid = None
         while not launcher_pid:
