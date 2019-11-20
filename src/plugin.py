@@ -311,7 +311,7 @@ class RockstarPlugin(Plugin):
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
-            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/s"
+            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/l"
             profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
             friend = UserInfo(friends_list[i]['rockstarId'],
                               friends_list[i]['displayName'],
@@ -351,7 +351,7 @@ class RockstarPlugin(Plugin):
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
         return_list = []
         for i in range(0, len(friends_list)):
-            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/s"
+            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName']}/l"
             profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
             friend = UserInfo(friends_list[i]['rockstarId'],
                               friends_list[i]['displayName'],
