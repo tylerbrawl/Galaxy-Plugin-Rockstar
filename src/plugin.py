@@ -150,7 +150,7 @@ class RockstarPlugin(Plugin):
             except Exception as e:
                 log.error("ROCKSTAR_AUTH_FAILURE: Something went terribly wrong with the re-authentication. " + repr(e))
                 log.exception("ROCKSTAR_STACK_TRACE")
-                raise InvalidCredentials()
+                raise InvalidCredentials
 
     async def pass_login_credentials(self, step, credentials, cookies):
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
@@ -445,7 +445,7 @@ class RockstarPlugin(Plugin):
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
         owned_title_ids_ = owned_title_ids
         checked_games_count = 0
-        total_games_count = len(games_cache)
+        total_games_count = len(games_cache) - 1  # We need to subtract 1 to account for the Launcher.
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
                 while checked_games_count < total_games_count:
