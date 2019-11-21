@@ -60,12 +60,12 @@ class LocalClient:
         pid = None
         find_actual_pid = subprocess.Popen(
             f'tasklist /FI "IMAGENAME eq {games_cache[title_id]["launchEXE"]} " /FI "STATUS eq running" /FO LIST',
-            stdout=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, err = find_actual_pid.communicate()
 
-        for line in find_actual_pid.stdout:
-            new_line = line.decode(locale.getpreferredencoding())
-            if "PID" in new_line:
-                pid = [str(s) for s in new_line.split() if s.isdigit()][0]
+        for line in output.decode(locale.getpreferredencoding()).splitlines():
+            if "PID" in line:
+                pid = [str(s) for s in line.split() if s.isdigit()][0]
                 break
         return pid
 
@@ -83,7 +83,7 @@ class LocalClient:
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
-        log.debug(f"ROCKSTAR_LAUNCHER_PATCHER_PID: {launcher_pid}")
+        log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
         retries = 30
