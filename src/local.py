@@ -40,6 +40,12 @@ class LocalClient:
             self.installer_location = None
         return self.installer_location
 
+    async def kill_launcher(self):
+        # The Launcher exits without displaying an error message if LauncherPatcher.exe is killed before Launcher.exe.
+        os.system("taskkill /f /im LauncherPatcher.exe")
+        await asyncio.sleep(1)
+        os.system("taskkill /f /im Launcher.exe")
+
     def get_path_to_game(self, title_id):
         try:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + games_cache[title_id]['guid'])

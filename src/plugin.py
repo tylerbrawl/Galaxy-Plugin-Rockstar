@@ -620,6 +620,14 @@ class RockstarPlugin(Plugin):
                 log.warning("ROCKSTAR_LAUNCHER_FAILED: The Rockstar Games Launcher could not be launched!")
 
     if IS_WINDOWS:
+        async def shutdown_platform_client(self):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
+            await self._local_client.kill_launcher()
+
+    if IS_WINDOWS:
         async def launch_game(self, game_id):
             if not self._local_client.get_local_launcher_path():
                 await self.open_rockstar_browser()
