@@ -121,6 +121,11 @@ class RockstarPlugin(Plugin):
                     self.loads_js("fingerprint2.js"),
                     self.loads_js("HashGen.js"),
                     self.loads_js("GenerateFingerprint.js")
+                ],
+                r'https://www.rockstargames.com/auth/get-user.json': [
+                    r'''
+                    window.location.href = "http://socialclub.rockstargames.com/";
+                    '''
                 ]
             }
             return NextStep("web_session", AUTH_PARAMS, js=fingerprint_js)
@@ -132,6 +137,7 @@ class RockstarPlugin(Plugin):
             # for cookie in cookies:
             #   self._http_client.update_cookies({cookie.name: cookie.value})
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
+            self._http_client.set_current_sc_token(stored_credentials['current_sc_token'])
             self._http_client.set_refresh_token_absolute(
                 pickle.loads(bytes.fromhex(stored_credentials['refresh_token'])))
             self._http_client.set_fingerprint(stored_credentials['fingerprint'])
@@ -157,6 +163,8 @@ class RockstarPlugin(Plugin):
         for cookie in cookies:
             if cookie['name'] == "ScAuthTokenData":
                 self._http_client.set_current_auth_token(cookie['value'])
+            if cookie['name'] == "BearerToken":
+                self._http_client.set_current_sc_token(cookie['value'])
             if cookie['name'] == "RMT":
                 if cookie['value'] != "":
                     if LOG_SENSITIVE_DATA:
@@ -196,7 +204,7 @@ class RockstarPlugin(Plugin):
             user = await self._http_client.authenticate()
         except Exception as e:
             log.error(repr(e))
-            raise InvalidCredentials()
+            raise InvalidCredentials
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):

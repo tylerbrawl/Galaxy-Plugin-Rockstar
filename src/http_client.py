@@ -1,5 +1,5 @@
 from galaxy.http import create_client_session
-from galaxy.api.errors import AuthenticationRequired
+from galaxy.api.errors import AuthenticationRequired, BackendError
 from http.cookies import SimpleCookie
 
 from consts import USER_AGENT, LOG_SENSITIVE_DATA
@@ -92,6 +92,7 @@ class BackendClient:
         self._current_session = None
         self._auth_lost_callback = None
         self._current_auth_token = None
+        self._current_sc_token = None
         self._first_auth = True
         # super().__init__(cookie_jar=self._cookie_jar)
 
@@ -111,6 +112,7 @@ class BackendClient:
             morsel_list.append(morsel)
         creds['cookie_jar'] = pickle.dumps(morsel_list).hex()
         creds['current_auth_token'] = self._current_auth_token
+        creds['current_sc_token'] = self._current_sc_token
         creds['refresh_token'] = pickle.dumps(self.refresh_token).hex()
         creds['fingerprint'] = self._fingerprint
         return creds
@@ -140,8 +142,15 @@ class BackendClient:
         self._current_auth_token = token
         self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': token})
 
+    def set_current_sc_token(self, token):
+        self._current_sc_token = token
+        self._current_session.cookie_jar.update_cookies({'BearerToken': token})
+
     def get_current_auth_token(self):
         return self._current_auth_token
+
+    def get_current_sc_token(self):
+        return self._current_sc_token
 
     def get_named_cookie(self, cookie_name):
         return self._current_session.cookies[cookie_name]
@@ -300,6 +309,15 @@ class BackendClient:
             raise
 
     async def refresh_credentials(self):
+        await self._refresh_credentials_base()
+        await self._refresh_credentials_social_club()
+
+    async def _refresh_credentials_base(self):
+        # This request returns a new ScAuthTokenData value, which is used as authentication for the base website of
+        # https://www.rockstargames.com/. This value grants access to the get-user.json file found on that website,
+        # which contains an access (bearer) token for https://www.rockstargames.com/ and
+        # https://scapi.rockstargames.com/.
+
         # It seems like the Rockstar website connects to https://signin.rockstargames.com/connect/cors/check/rsg via a
         # POST request in order to re-authenticate the user. This request uses a fingerprint as form data.
 
@@ -379,6 +397,96 @@ class BackendClient:
         except Exception as e:
             log.exception("ROCKSTAR_REFRESH_FAILURE: The attempt to re-authenticate the user has failed with the "
                           "exception " + repr(e) + ". Logging the user out...")
+            raise
+
+    async def _refresh_credentials_social_club_light(self):
+        # If the user attempts to use the Social Club bearer token within ten hours of having received its latest
+        # version, then they may simply make a GET request to https://socialclub.rockstargames.com in order to get a new
+        # bearer token.
+        resp = await self._current_session.get("https://socialclub.rockstargames.com", allow_redirects=True)
+        if "BearerToken" in resp.cookies:
+            self._current_sc_token = resp.cookies["BearerToken"].value
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token}")
+            else:
+                log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token[:5]}***{self._current_sc_token[-3:]}")
+            self._current_session.cookie_jar.update_cookies({"BearerToken": self._current_sc_token})
+        else:
+            # If a request was made to get a new bearer token but a new token was not granted, then it is assumed that
+            # the alternate longer method for refreshing the user's credentials is required.
+            log.warning("ROCKSTAR_SC_LIGHT_REFRESH_FAILED: The light method for refreshing the Social Club user's "
+                        "authentication has failed. Falling back to the strict refresh method...")
+            await self.refresh_credentials()
+
+    async def _refresh_credentials_social_club(self):
+        # There are instances where the bearer token provided by the get-user.json endpoint is insufficient (i.e.,
+        # sending a message to a user or getting the tags from the Google Tag Manager). This requires a separate access
+        # (bearer) token from the https://socialclub.rockstargames.com/ website.
+
+        # To refresh the Social Club bearer token (hereafter referred to as the BearerToken), first make a GET request
+        # to https://signin.rockstargames.com/connect/check/socialclub?returnUrl=%2FBlocker%2FAuthCheck&lang=en-US. Make
+        # sure to supply the current cookies as a header. Also, this request sets a new TS01a305c4 cookie, so its value
+        # should be updated.
+
+        # Next, make a POST request to https://signin.rockstargames.com/api/connect/check/socialclub. For request
+        # headers, Content-Type must be application/json, Cookie must be the current cookies, and X-Requested-With must
+        # be XMLHttpRequest. This response returns a JSON containing a single key: redirectUrl, which corresponds to the
+        # unique URL for the user to refresh their bearer token.
+
+        # Lastly, make a GET request to the specified redirectUrl and set the request header X-Requested-With to
+        # XMLHttpRequest. This request sets the updated value for the BearerToken cookie, allowing further requests to
+        # the Social Club API to be made.
+        try:
+            url = ("https://signin.rockstargames.com/connect/check/socialclub?returnUrl=%2FBlocker%2FAuthCheck&lang=en-"
+                   "US")
+            headers = {
+                "Cookie": self.get_cookies_for_headers(),
+                "User-Agent": USER_AGENT
+            }
+            resp = await self._current_session.get(url, headers=headers)
+            if "TS01a305c4" in resp.cookies:
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(resp.cookies['TS01a305c4'].value)}")
+                else:
+                    log.debug("ROCKSTAR_SC_TS01a305c4: ***")
+                self._current_session.cookie_jar.update_cookies({"TS01a305c4": resp.cookies["TS01a305c4"].value})
+            else:
+                raise BackendError
+
+            url = "https://signin.rockstargames.com/api/connect/check/socialclub"
+            headers = {
+                "Content-Type": "application/json",
+                "Cookie": self.get_cookies_for_headers(),
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            data = {
+                "fingerprint": self._fingerprint,
+                "returnUrl": "/Blocker/AuthCheck"
+            }
+            resp = await self._current_session.post(url, data=data, headers=headers)
+            resp_json = await resp.json()
+
+            url = resp_json["redirectUrl"]
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": USER_AGENT,
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            resp = await self._current_session.get(url, headers=headers, allow_redirects=True)
+            for morsel in resp.cookies:
+                if morsel.key == "BearerToken":
+                    if LOG_SENSITIVE_DATA:
+                        log.debug(f"ROCKSTAR_SC_BEARER_NEW: {morsel.value}")
+                    else:
+                        log.debug(f"ROCKSTAR_SC_BEARER_NEW: {morsel.value[:5]}***{morsel.value[-3:]}")
+                    self._current_sc_token = morsel.value
+                    log.debug("ROCKSTAR_SC_REFRESH_SUCCESS: The Social Club user has been successfully "
+                              "re-authenticated!")
+                self._current_session.cookie_jar.update_cookies({morsel.key: morsel.value})
+        except Exception as e:
+            log.exception(f"ROCKSTAR_SC_REFRESH_FAILURE: The attempt to re-authenticate the user on the Social Club has"
+                          f" failed with the exception {repr(e)}. Logging the user out...")
             raise
 
     async def authenticate(self):
