@@ -45,6 +45,7 @@ games_cache = {
         "guid": "{915726DF-7891-444A-AA03-0DF1D64F561A}",
         "rosTitleId": 9,
         "onlineTitleId": 35,
+        "googleTagId": "LAN_PC",
         "launchEXE": "LANoire.exe",
         "achievementId": "lan",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
@@ -76,6 +77,7 @@ games_cache = {
         "guid": "Grand Theft Auto III",
         "rosTitleId": 26,
         "onlineTitleId": 24,
+        "googleTagId": "GTAIII_PC",
         "launchEXE": "gta3.exe",
         "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
@@ -143,7 +145,7 @@ def get_game_title_id_from_google_tag_id(google_tag_id):
     # present in the string differ from other forms of identifiers on Rockstar's websites in that it describes the
     # game's title, and is not just a numeric ID.
     for game, d in games_cache.items():
-        if d['googleTagId'] == google_tag_id:
+        if 'googleTagId' in d and d['googleTagId'] == google_tag_id:
             return game
     return None
 

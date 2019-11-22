@@ -17,8 +17,7 @@ import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
     ARE_ACHIEVEMENTS_IMPLEMENTED
-from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
-    get_achievement_id_from_ros_title_id
+from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id
 from http_client import BackendClient
 from version import __version__
 
@@ -389,9 +388,8 @@ class RockstarPlugin(Plugin):
         try:
             played_games = await self._http_client.get_played_games()
             for game in played_games:
-                title_id = get_game_title_id_from_online_title_id(game)
-                owned_title_ids.append(title_id)
-                log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + title_id + "!")
+                owned_title_ids.append(game)
+                log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + game + "!")
         except Exception as e:
             log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get the"
                       " user's played games online. Falling back to log file check...")

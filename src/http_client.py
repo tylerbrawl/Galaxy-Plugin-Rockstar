@@ -3,6 +3,7 @@ from galaxy.api.errors import AuthenticationRequired, BackendError
 from http.cookies import SimpleCookie
 
 from consts import USER_AGENT, LOG_SENSITIVE_DATA
+from game_cache import get_game_title_id_from_google_tag_id
 
 import aiohttp
 import asyncio
@@ -96,6 +97,7 @@ class BackendClient:
         self._current_auth_token = None
         self._current_sc_token = None
         self._first_auth = True
+        self._refreshing = False
         # super().__init__(cookie_jar=self._cookie_jar)
 
     async def close(self):
@@ -200,6 +202,7 @@ class BackendClient:
             headers["User-Agent"] = USER_AGENT
         try:
             resp = await self._current_session.get(url, headers=headers)
+            await self._update_cookies_from_response(resp)
             return await resp.json()
         except Exception as e:
             log.exception(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
@@ -221,6 +224,14 @@ class BackendClient:
             # log.debug("ROCKSTAR_CURR_COOKIE: " + cookie_string)
         return cookie_string[:len(cookie_string) - 1]
 
+    async def _update_cookies_from_response(self, resp: aiohttp.ClientResponse, exclude=None):
+        if exclude is None:
+            exclude = []
+        filtered_cookies = resp.cookies
+        for key, morsel in filtered_cookies.items():
+            if key not in exclude:
+                self._current_session.cookie_jar.update_cookies({key: morsel.value})
+
     async def _get_user_json(self, message=None):
         try:
             old_auth = self._current_auth_token
@@ -238,6 +249,7 @@ class BackendClient:
             }
             resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
                                                    allow_redirects=False)
+            await self._update_cookies_from_response(resp)
             # aiohttp allows you to get a specified cookie from the previous response.
             filtered_cookies = resp.cookies
             if "TS019978c2" in filtered_cookies:
@@ -246,7 +258,6 @@ class BackendClient:
                     log.debug(f"ROCKSTAR_NEW_TS_COOKIE: {ts_val}")
                 else:
                     log.debug("ROCKSTAR_NEW_TS_COOKIE: ***")
-                self._current_session.cookie_jar.update_cookies({'TS019978c2': ts_val})
             if "ScAuthTokenData" in filtered_cookies:
                 new_auth = filtered_cookies['ScAuthTokenData'].value
                 if LOG_SENSITIVE_DATA:
@@ -256,7 +267,6 @@ class BackendClient:
                 self._current_auth_token = new_auth
                 if LOG_SENSITIVE_DATA:
                     log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
-                self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': new_auth})
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
             else:
@@ -312,6 +322,8 @@ class BackendClient:
             def get_token(self):
                 return RockstarHTMLParser.rv_token
 
+        while self._refreshing:
+            await asyncio.sleep(1)
         headers = {
             "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
                        "application/signed-exchange;v=b3"),
@@ -320,10 +332,12 @@ class BackendClient:
             "User-Agent": USER_AGENT
         }
         resp = await self._current_session.get("https://socialclub.rockstargames.com/", headers=headers)
+        await self._update_cookies_from_response(resp)
         resp_text = await resp.text()
         parser = RockstarHTMLParser()
         parser.feed(resp_text)
         rv_token = parser.get_token()
+        parser.close()
         if LOG_SENSITIVE_DATA:
             log.debug(f"ROCKSTAR_SC_REQUEST_VERIFICATION_TOKEN: {rv_token}")
 
@@ -334,6 +348,7 @@ class BackendClient:
         }
         url = f"https://socialclub.rockstargames.com/ajax/getGoogleTagManagerSetupData?_={int(time() * 1000)}"
         resp = await self._current_session.get(url, headers=headers)
+        await self._update_cookies_from_response(resp)
         return await resp.json()
 
     async def get_played_games(self, callback=False):
@@ -341,9 +356,18 @@ class BackendClient:
             resp_json = await self._get_google_tag_data()
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_SC_TAG_DATA: {resp_json}")
+            else:
+                log.debug(f"ROCKSTAR_SC_TAG_DATA: ***")
             if resp_json['loginState'] == "false":
                 raise AuthenticationRequired
-            return None
+            games_owned_string = resp_json['gamesOwned']
+            owned_games = []
+            for game in games_owned_string.split('|'):
+                if game != "Launcher_PC":
+                    title_id = get_game_title_id_from_google_tag_id(game)
+                    if title_id:
+                        owned_games.append(title_id)
+            return owned_games
         except Exception:
             if not callback:
                 try:
@@ -356,8 +380,10 @@ class BackendClient:
             raise
 
     async def refresh_credentials(self):
+        self._refreshing = True
         await self._refresh_credentials_base()
         await self._refresh_credentials_social_club()
+        self._refreshing = False
 
     async def _refresh_credentials_base(self):
         # This request returns a new ScAuthTokenData value, which is used as authentication for the base website of
@@ -401,13 +427,13 @@ class BackendClient:
                     break
                 await asyncio.sleep(1)
             refresh_resp = await self._current_session.post(url, data=data, headers=headers)
+            await self._update_cookies_from_response(refresh_resp)
             refresh_code = await refresh_resp.text()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_CODE: Got code " + refresh_code + "!")
             # We need to set the new refresh token here, if it is updated.
             try:
                 self.set_refresh_token(refresh_resp.cookies['RMT'].value)
-                self._current_session.cookie_jar.update_cookies({'RMT': refresh_resp.cookies['RMT'].value})
             except KeyError:
                 if LOG_SENSITIVE_DATA:
                     log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not "
@@ -431,13 +457,12 @@ class BackendClient:
             }
             data = {"code": refresh_code}
             final_request = await self._current_session.post(url, json=data, headers=headers)
+            await self._update_cookies_from_response(final_request)
             final_json = await final_request.json()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
             filtered = final_request.cookies
             new_auth = filtered['ScAuthTokenData'].value
-            self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': new_auth})
-            self._current_session.cookie_jar.update_cookies({'TS019978c2': filtered['TS019978c2'].value})
             self._current_auth_token = new_auth
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
@@ -455,6 +480,7 @@ class BackendClient:
         # version, then they may simply make a GET request to https://socialclub.rockstargames.com in order to get a new
         # bearer token.
         resp = await self._current_session.get("https://socialclub.rockstargames.com", allow_redirects=True)
+        await self._update_cookies_from_response(resp)
         filtered_cookies = resp.cookies
         if "BearerToken" in filtered_cookies:
             self._current_sc_token = filtered_cookies["BearerToken"].value
@@ -462,7 +488,6 @@ class BackendClient:
                 log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token}")
             else:
                 log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token[:5]}***{self._current_sc_token[-3:]}")
-            self._current_session.cookie_jar.update_cookies({"BearerToken": self._current_sc_token})
         else:
             # If a request was made to get a new bearer token but a new token was not granted, then it is assumed that
             # the alternate longer method for refreshing the user's credentials is required.
@@ -489,6 +514,11 @@ class BackendClient:
         # XMLHttpRequest. This request sets the updated value for the BearerToken cookie, allowing further requests to
         # the Social Club API to be made.
         try:
+            old_auth = self._current_sc_token
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_SC_BEARER_OLD: {old_auth}")
+            else:
+                log.debug(f"ROCKSTAR_SC_BEARER_OLD: {old_auth[:5]}***{old_auth[-3:]}")
             url = ("https://signin.rockstargames.com/connect/check/socialclub?returnUrl=%2FBlocker%2FAuthCheck&lang=en-"
                    "US")
             headers = {
@@ -496,13 +526,13 @@ class BackendClient:
                 "User-Agent": USER_AGENT
             }
             resp = await self._current_session.get(url, headers=headers)
+            await self._update_cookies_from_response(resp)
             filtered_cookies = resp.cookies
             if "TS01a305c4" in filtered_cookies:
                 if LOG_SENSITIVE_DATA:
                     log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(filtered_cookies['TS01a305c4'].value)}")
                 else:
                     log.debug("ROCKSTAR_SC_TS01a305c4: ***")
-                self._current_session.cookie_jar.update_cookies({"TS01a305c4": filtered_cookies["TS01a305c4"].value})
             else:
                 raise BackendError
 
@@ -518,6 +548,7 @@ class BackendClient:
                 "returnUrl": "/Blocker/AuthCheck"
             }
             resp = await self._current_session.post(url, json=data, headers=headers)
+            await self._update_cookies_from_response(resp)
             resp_json = await resp.json()
 
             url = resp_json["redirectUrl"]
@@ -530,6 +561,7 @@ class BackendClient:
                 "X-Requested-With": "XMLHttpRequest"
             }
             resp = await self._current_session.get(url, headers=headers, allow_redirects=False)
+            await self._update_cookies_from_response(resp)
             filtered_cookies = resp.cookies
             for key, morsel in filtered_cookies.items():
                 if key == "BearerToken":
@@ -538,9 +570,10 @@ class BackendClient:
                     else:
                         log.debug(f"ROCKSTAR_SC_BEARER_NEW: {morsel.value[:5]}***{morsel.value[-3:]}")
                     self._current_sc_token = morsel.value
-                    log.debug("ROCKSTAR_SC_REFRESH_SUCCESS: The Social Club user has been successfully "
-                              "re-authenticated!")
-                self._current_session.cookie_jar.update_cookies({key: morsel.value})
+                    if old_auth != self._current_sc_token:
+                        log.debug("ROCKSTAR_SC_REFRESH_SUCCESS: The Social Club user has been successfully "
+                                  "re-authenticated!")
+                    break
         except Exception as e:
             log.exception(f"ROCKSTAR_SC_REFRESH_FAILURE: The attempt to re-authenticate the user on the Social Club has"
                           f" failed with the exception {repr(e)}. Logging the user out...")
@@ -565,7 +598,7 @@ class BackendClient:
                        "application/signed-exchange;application/json;v=b3"),
             "Accept-Encoding": "gzip, deflate, br",
             "Accept-Language": "en-US, en;q=0.9",
-            "Authorization": f"Bearer {self.bearer}",
+            "Authorization": f"Bearer {self._current_sc_token}",
             "Cache-Control": "max-age=0",
             "Connection": "keep-alive",
             "dnt": "1",
@@ -579,6 +612,7 @@ class BackendClient:
         }
         try:
             resp_user = await self._current_session.get(url, headers=headers)
+            await self._update_cookies_from_response(resp_user)
             resp_user_text = await resp_user.json()
         except Exception as e:
             log.error(
