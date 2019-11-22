@@ -404,8 +404,9 @@ class BackendClient:
         # version, then they may simply make a GET request to https://socialclub.rockstargames.com in order to get a new
         # bearer token.
         resp = await self._current_session.get("https://socialclub.rockstargames.com", allow_redirects=True)
-        if "BearerToken" in resp.cookies:
-            self._current_sc_token = resp.cookies["BearerToken"].value
+        filtered_cookies = resp.cookies
+        if "BearerToken" in filtered_cookies:
+            self._current_sc_token = filtered_cookies["BearerToken"].value
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token}")
             else:
@@ -440,23 +441,24 @@ class BackendClient:
             url = ("https://signin.rockstargames.com/connect/check/socialclub?returnUrl=%2FBlocker%2FAuthCheck&lang=en-"
                    "US")
             headers = {
-                "Cookie": self.get_cookies_for_headers(),
+                "Cookie": await self.get_cookies_for_headers(),
                 "User-Agent": USER_AGENT
             }
             resp = await self._current_session.get(url, headers=headers)
-            if "TS01a305c4" in resp.cookies:
+            filtered_cookies = resp.cookies
+            if "TS01a305c4" in filtered_cookies:
                 if LOG_SENSITIVE_DATA:
-                    log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(resp.cookies['TS01a305c4'].value)}")
+                    log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(filtered_cookies['TS01a305c4'].value)}")
                 else:
                     log.debug("ROCKSTAR_SC_TS01a305c4: ***")
-                self._current_session.cookie_jar.update_cookies({"TS01a305c4": resp.cookies["TS01a305c4"].value})
+                self._current_session.cookie_jar.update_cookies({"TS01a305c4": filtered_cookies["TS01a305c4"].value})
             else:
                 raise BackendError
 
             url = "https://signin.rockstargames.com/api/connect/check/socialclub"
             headers = {
                 "Content-Type": "application/json",
-                "Cookie": self.get_cookies_for_headers(),
+                "Cookie": await self.get_cookies_for_headers(),
                 "User-Agent": USER_AGENT,
                 "X-Requested-With": "XMLHttpRequest"
             }
@@ -464,18 +466,22 @@ class BackendClient:
                 "fingerprint": self._fingerprint,
                 "returnUrl": "/Blocker/AuthCheck"
             }
-            resp = await self._current_session.post(url, data=data, headers=headers)
+            resp = await self._current_session.post(url, json=data, headers=headers)
             resp_json = await resp.json()
 
             url = resp_json["redirectUrl"]
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_SC_REDIRECT_URL: {url}")
             headers = {
                 "Content-Type": "application/json",
+                "Cookie": await self.get_cookies_for_headers(),
                 "User-Agent": USER_AGENT,
                 "X-Requested-With": "XMLHttpRequest"
             }
-            resp = await self._current_session.get(url, headers=headers, allow_redirects=True)
-            for morsel in resp.cookies:
-                if morsel.key == "BearerToken":
+            resp = await self._current_session.get(url, headers=headers, allow_redirects=False)
+            filtered_cookies = resp.cookies
+            for key, morsel in filtered_cookies.items():
+                if key == "BearerToken":
                     if LOG_SENSITIVE_DATA:
                         log.debug(f"ROCKSTAR_SC_BEARER_NEW: {morsel.value}")
                     else:
@@ -483,7 +489,7 @@ class BackendClient:
                     self._current_sc_token = morsel.value
                     log.debug("ROCKSTAR_SC_REFRESH_SUCCESS: The Social Club user has been successfully "
                               "re-authenticated!")
-                self._current_session.cookie_jar.update_cookies({morsel.key: morsel.value})
+                self._current_session.cookie_jar.update_cookies({key: morsel.value})
         except Exception as e:
             log.exception(f"ROCKSTAR_SC_REFRESH_FAILURE: The attempt to re-authenticate the user on the Social Club has"
                           f" failed with the exception {repr(e)}. Logging the user out...")

@@ -52,3 +52,7 @@ setTimeout(function() {
         document.cookie = ('fingerprint=' + fpString.replace(/;/g, "$")); //+ '; expires=' + expiry + '; path=/';
 	});
 }, 500);
+
+setTimeout(function () {
+    window.location.href = "https://socialclub.rockstargames.com/";
+}, 1000);

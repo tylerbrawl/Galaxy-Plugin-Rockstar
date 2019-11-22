@@ -120,15 +120,7 @@ class RockstarPlugin(Plugin):
                 r'https://www.rockstargames.com/': [
                     self.loads_js("fingerprint2.js"),
                     self.loads_js("HashGen.js"),
-                    self.loads_js("GenerateFingerprint.js"),
-                    r'''
-                    window.location.href = "http://socialclub.rockstargames.com/";
-                    '''
-                ],
-                r'https://www.rockstargames.com/auth/get-user.json': [
-                    r'''
-                    window.location.href = "http://socialclub.rockstargames.com/";
-                    '''
+                    self.loads_js("GenerateFingerprint.js")
                 ]
             }
             return NextStep("web_session", AUTH_PARAMS, js=fingerprint_js)
