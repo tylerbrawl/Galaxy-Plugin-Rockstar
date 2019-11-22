@@ -13,6 +13,7 @@ import pickle
 import re
 import traceback
 
+from html.parser import HTMLParser
 from time import time
 from yarl import URL
 
@@ -193,7 +194,7 @@ class BackendClient:
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
         if include_default_headers:
-            headers["Authorization"] = f"Bearer {await self._get_bearer()}"
+            headers["Authorization"] = f"Bearer {self._current_sc_token}"
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
@@ -201,8 +202,7 @@ class BackendClient:
             return await resp.json()
         except Exception as e:
             log.exception(f"WARNING: The request failed with exception {repr(e)}. Attempting to refresh credentials...")
-            self.set_auth_lost_callback(True)
-            await self.authenticate()
+            await self._refresh_credentials_social_club_light()
             return await self.get_json_from_request_strict(url, include_default_headers, additional_headers)
 
     async def get_bearer_from_cookie_jar(self):
@@ -294,18 +294,64 @@ class BackendClient:
             log.error("ERROR: The request to refresh credentials resulted in this exception: " + repr(e))
             raise
 
-    async def get_played_games(self):
+    async def _get_google_tag_data(self):
+        # To gain access to this information, we need to scrape a hidden input value called __RequestVerificationToken
+        # located on the html file at https://socialclub.rockstargames.com/.
+
+        class RockstarHTMLParser(HTMLParser):
+            rv_token = None
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "input" and ('name', "__RequestVerificationToken") in attrs:
+                    for attr, value in attrs:
+                        if attr == "value":
+                            RockstarHTMLParser.rv_token = value
+                            break
+
+            def get_token(self):
+                return RockstarHTMLParser.rv_token
+
+        headers = {
+            "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
+                       "application/signed-exchange;v=b3"),
+            "Cookie": await self.get_cookies_for_headers(),
+            "Referer": "https://socialclub.rockstargames.com/",
+            "User-Agent": USER_AGENT
+        }
+        resp = await self._current_session.get("https://socialclub.rockstargames.com/", headers=headers)
+        resp_text = await resp.text()
+        parser = RockstarHTMLParser()
+        parser.feed(resp_text)
+        rv_token = parser.get_token()
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"ROCKSTAR_SC_REQUEST_VERIFICATION_TOKEN: {rv_token}")
+
+        headers = {
+            "Cookie": await self.get_cookies_for_headers(),
+            "RequestVerificationToken": rv_token,
+            "User-Agent": USER_AGENT
+        }
+        url = f"https://socialclub.rockstargames.com/ajax/getGoogleTagManagerSetupData?_={int(time() * 1000)}"
+        resp = await self._current_session.get(url, headers=headers)
+        return await resp.json()
+
+    async def get_played_games(self, callback=False):
         try:
-            resp_json = await self._get_user_json()
-            return_list = []
-            played_games = resp_json["user"]["games_played"]
-            for game in played_games:
-                if game["platform"] == "PC":
-                    return_list.append(game["id"])
-            return return_list
-        except Exception as e:
-            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The request to scrape the user's played games resulted in "
-                      "this exception: " + repr(e))
+            resp_json = await self._get_google_tag_data()
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_SC_TAG_DATA: {resp_json}")
+            if resp_json['loginState'] == "false":
+                raise AuthenticationRequired
+            return None
+        except Exception:
+            if not callback:
+                try:
+                    await self._refresh_credentials_social_club_light()
+                    return await self.get_played_games(callback=True)
+                except Exception as e:
+                    log.exception("ROCKSTAR_PLAYED_GAMES_ERROR: The request to scrape the user's played games resulted "
+                                  "in this exception: " + repr(e))
+                    raise
             raise
 
     async def refresh_credentials(self):
