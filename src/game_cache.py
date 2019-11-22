@@ -55,6 +55,7 @@ games_cache = {
         "guid": "{1AA94747-3BF6-4237-9E1A-7B3067738FE1}",
         "rosTitleId": 10,
         "onlineTitleId": 40,
+        "googleTagId": "MP3_PC",
         "launchEXE": "MaxPayne3.exe",
         "achievementId": "mp3",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
