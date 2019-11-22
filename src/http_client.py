@@ -5,6 +5,7 @@ from http.cookies import SimpleCookie
 from consts import USER_AGENT, LOG_SENSITIVE_DATA
 
 import aiohttp
+import asyncio
 import dataclasses
 import dateutil.tz
 import datetime
@@ -395,6 +396,10 @@ class BackendClient:
                 "X-Requested-With": "XMLHttpRequest"
             }
             data = {"fingerprint": self._fingerprint}
+            while True:
+                if self._fingerprint and self.get_refresh_token():
+                    break
+                await asyncio.sleep(1)
             refresh_resp = await self._current_session.post(url, data=data, headers=headers)
             refresh_code = await refresh_resp.text()
             if LOG_SENSITIVE_DATA:
