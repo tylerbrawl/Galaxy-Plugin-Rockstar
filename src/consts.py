@@ -1,8 +1,21 @@
 import sys
 
+from config_parser import init_config_options
+
+
+class NoLogFoundException(Exception):
+    pass
+
+
+class NoGamesInLogException(Exception):
+    pass
+
+
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
 
-LOG_SENSITIVE_DATA = False
+CONFIG_OPTIONS = init_config_options()
+
+LOG_SENSITIVE_DATA = CONFIG_OPTIONS['log_sensitive_data'].get()
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
@@ -24,11 +37,3 @@ AUTH_PARAMS = {
     "end_uri_regex": r"https://scapi.rockstargames.com/profile/getbasicprofile"
                     # r"https://www.rockstargames.com/auth/get-user.json.*"
 }
-
-
-class NoLogFoundException(Exception):
-    pass
-
-
-class NoGamesInLogException(Exception):
-    pass

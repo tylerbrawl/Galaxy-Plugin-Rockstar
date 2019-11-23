@@ -6,7 +6,7 @@ import locale
 
 from galaxy.proc_tools import pids
 
-from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA
+from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA, CONFIG_OPTIONS
 from game_cache import games_cache
 
 
@@ -76,7 +76,7 @@ class LocalClient:
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
         subprocess.call(f'"{game_path}" -launchTitleInFolder "{path}" @commandline.txt', stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL, shell=False)
+                        stderr=subprocess.DEVNULL, shell=CONFIG_OPTIONS['launch_game_from_shell'].get())
         launcher_pid = None
         while not launcher_pid:
             await asyncio.sleep(1)
