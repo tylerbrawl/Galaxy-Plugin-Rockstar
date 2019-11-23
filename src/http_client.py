@@ -230,7 +230,9 @@ class BackendClient:
         filtered_cookies = resp.cookies
         for key, morsel in filtered_cookies.items():
             if key not in exclude:
-                self._current_session.cookie_jar.update_cookies({key: morsel.value})
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_COOKIE_UPDATED: Found Cookie {key}: {str(morsel)}")
+                self._current_session.cookie_jar.update_cookies({key: morsel})
 
     async def _get_user_json(self, message=None):
         try:
@@ -380,6 +382,8 @@ class BackendClient:
             raise
 
     async def refresh_credentials(self):
+        if self._debug_always_refresh and not self._auth_lost_callback:
+            await asyncio.sleep(1)  # This should prevent exceptions that occur for making a refresh request too early.
         self._refreshing = True
         await self._refresh_credentials_base()
         await self._refresh_credentials_social_club()
@@ -414,18 +418,16 @@ class BackendClient:
                     break
             headers = {
                 "Accept": "application/json, text/plain, */*",
-                "Cookie": "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_value,
+                "Cookie": await self.get_cookies_for_headers(),
+                          # "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_value,
                 "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
                 "Host": "signin.rockstargames.com",
                 "Origin": "https://www.rockstargames.com",
+                "Referer": "https://www.rockstargames.com/",
                 "User-Agent": USER_AGENT,
                 "X-Requested-With": "XMLHttpRequest"
             }
             data = {"fingerprint": self._fingerprint}
-            while True:
-                if self._fingerprint and self.get_refresh_token():
-                    break
-                await asyncio.sleep(1)
             refresh_resp = await self._current_session.post(url, data=data, headers=headers)
             await self._update_cookies_from_response(refresh_resp)
             refresh_code = await refresh_resp.text()
