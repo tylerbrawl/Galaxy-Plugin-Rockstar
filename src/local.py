@@ -1,4 +1,3 @@
-import os
 from winreg import *
 import logging as log
 import subprocess
@@ -23,7 +22,6 @@ class LocalClient:
     def __init__(self):
         self.root_reg = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
         self.installer_location = None
-        self.FNULL = open(os.devnull, 'w')
         self.get_local_launcher_path()
 
     def get_local_launcher_path(self):
@@ -42,9 +40,9 @@ class LocalClient:
 
     async def kill_launcher(self):
         # The Launcher exits without displaying an error message if LauncherPatcher.exe is killed before Launcher.exe.
-        os.system("taskkill /f /im LauncherPatcher.exe")
+        subprocess.Popen("taskkill /f /im LauncherPatcher.exe")
         await asyncio.sleep(1)
-        os.system("taskkill /f /im Launcher.exe")
+        subprocess.Popen("taskkill /f /im Launcher.exe")
 
     def get_path_to_game(self, title_id):
         try:
@@ -77,8 +75,8 @@ class LocalClient:
             return
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=self.FNULL,
-                         stderr=self.FNULL, shell=False)
+        subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, shell=False)
         launcher_pid = None
         while not launcher_pid:
             await asyncio.sleep(1)
@@ -107,11 +105,11 @@ class LocalClient:
     def install_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.call(self.installer_location + " -enableFullMode -install=" + title_id, stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.Popen([self.installer_location, "-enableFullMode", "-install=" + title_id],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
 
     def uninstall_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.call(self.installer_location + " -enableFullMode -uninstall=" + title_id, stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.Popen([self.installer_location, "-enableFullMode", "-uninstall=" + title_id],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
