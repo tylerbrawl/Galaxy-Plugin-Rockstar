@@ -77,8 +77,8 @@ class LocalClient:
             return
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.call(f'"{game_path}" -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=self.FNULL,
+                         stderr=self.FNULL, shell=False)
         launcher_pid = None
         while not launcher_pid:
             await asyncio.sleep(1)
