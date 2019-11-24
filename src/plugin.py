@@ -59,7 +59,7 @@ class RockstarPlugin(Plugin):
         self._all_achievements_cache = {}
         self.friends_cache = []
         self.owned_games_cache = []
-        self.last_online_game_check = None
+        self.last_online_game_check = time() - 300
         self.local_games_cache = {}
         self.game_time_cache = {}
         self.running_games_info_list = {}
@@ -398,8 +398,8 @@ class RockstarPlugin(Plugin):
                     owned_title_ids.append(game)
                     log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + game + "!")
             except Exception as e:
-                log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get the"
-                          " user's played games online. Falling back to log file check...")
+                log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get"
+                          " the user's played games online. Falling back to log file check...")
                 online_check_success = False
         elif IS_WINDOWS:
             log.debug("ROCKSTAR_SC_ONLINE_GAMES_SKIP: No attempt has been made to scrape the user's games from the "
