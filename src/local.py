@@ -105,11 +105,11 @@ class LocalClient:
     def install_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.Popen([self.installer_location, "-enableFullMode", "-install=" + title_id],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
+        subprocess.call(self.installer_location + " -enableFullMode -install=" + title_id, stdout=self.FNULL,
+                        stderr=self.FNULL, shell=False)
 
     def uninstall_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.Popen([self.installer_location, "-enableFullMode", "-uninstall=" + title_id],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
+        subprocess.call(self.installer_location + " -enableFullMode -uninstall=" + title_id, stdout=self.FNULL,
+                        stderr=self.FNULL, shell=False)
