@@ -42,9 +42,6 @@ CONFIG_OPTIONS_INFO = {
         'default_value': 1,
         'allowed_values': [i for i in range(0, 4)]
     },
-    'launch_game_from_shell': {
-        'default_value': False
-    },
     'log_sensitive_data': {
         'default_value': False
     },
