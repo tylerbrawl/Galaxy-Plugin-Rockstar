@@ -104,12 +104,6 @@ class BackendClient:
 
     def get_credentials(self):
         creds = self.user
-        # It might seem strange to store the entire session object in hexadecimal, rather than just the session's
-        # cookies. However, keeping the session object intact is necessary in order to allow ScAuthTokenData to be
-        # successfully authenticated. My guess is that the ScAuthTokenData uses some form of browser fingerprinting,
-        # as using a value from Chrome on Firefox returned an error. Likewise, creating a new session object, rather
-        # than reimplementing the old session object, returns an error when using a correct ScAuthTokenData value, even
-        # if the two sessions have equivalent cookies.
         morsel_list = []
         for morsel in self._current_session.cookie_jar.__iter__():
             morsel_list.append(morsel)
