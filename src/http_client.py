@@ -1,9 +1,11 @@
 from galaxy.http import create_client_session
 from galaxy.api.errors import AuthenticationRequired, BackendError, InvalidCredentials
+from galaxy.api.types import UserPresence
+from galaxy.api.consts import PresenceState
 from http.cookies import SimpleCookie
 
 from consts import USER_AGENT, LOG_SENSITIVE_DATA, CONFIG_OPTIONS
-from game_cache import get_game_title_id_from_google_tag_id
+from game_cache import get_game_title_id_from_google_tag_id, get_game_title_id_from_ugc_title_id, games_cache
 
 import aiohttp
 import asyncio
@@ -300,10 +302,7 @@ class BackendClient:
             log.error("ERROR: The request to refresh credentials resulted in this exception: " + repr(e))
             raise
 
-    async def _get_google_tag_data(self):
-        # To gain access to this information, we need to scrape a hidden input value called __RequestVerificationToken
-        # located on the html file at https://socialclub.rockstargames.com/.
-
+    async def _get_request_verification_token(self, url, referer):
         class RockstarHTMLParser(HTMLParser):
             rv_token = None
 
@@ -311,11 +310,11 @@ class BackendClient:
                 if tag == "input" and ('name', "__RequestVerificationToken") in attrs:
                     for attr, value in attrs:
                         if attr == "value":
-                            RockstarHTMLParser.rv_token = value
+                            self.rv_token = value
                             break
 
             def get_token(self):
-                return RockstarHTMLParser.rv_token
+                return self.rv_token
 
         while self._refreshing:
             await asyncio.sleep(1)
@@ -323,16 +322,24 @@ class BackendClient:
             "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
                        "application/signed-exchange;v=b3"),
             "Cookie": await self.get_cookies_for_headers(),
-            "Referer": "https://socialclub.rockstargames.com/",
+            "Referer": referer,
             "User-Agent": USER_AGENT
         }
-        resp = await self._current_session.get("https://socialclub.rockstargames.com/", headers=headers)
+        resp = await self._current_session.get(url, headers=headers)
         await self._update_cookies_from_response(resp)
         resp_text = await resp.text()
         parser = RockstarHTMLParser()
         parser.feed(resp_text)
         rv_token = parser.get_token()
         parser.close()
+        return rv_token
+
+    async def _get_google_tag_data(self):
+        # To gain access to this information, we need to scrape a hidden input value called __RequestVerificationToken
+        # located on the html file at https://socialclub.rockstargames.com/.
+        rv_token = await self._get_request_verification_token("https://socialclub.rockstargames.com/",
+                                                              "https://socialclub.rockstargames.com/")
+
         if LOG_SENSITIVE_DATA:
             log.debug(f"ROCKSTAR_SC_REQUEST_VERIFICATION_TOKEN: {rv_token}")
 
@@ -374,6 +381,128 @@ class BackendClient:
                                   "in this exception: " + repr(e))
                     raise
             raise
+
+    async def get_last_played_game(self, friend_name):
+        headers = {
+            "Authorization": f"Bearer {self._current_sc_token}",
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest"
+        }
+        resp = await self._current_session.get("https://scapi.rockstargames.com/profile/getprofile?nickname="
+                                               f"{friend_name}&maxFriends=3", headers=headers)
+        await self._update_cookies_from_response(resp)
+        resp_json = await resp.json()
+        last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['lastUgcTitle']
+        title_id = get_game_title_id_from_ugc_title_id(last_played_ugc + "_PC")
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"{friend_name}'s Last Played Game: "
+                      f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+        return UserPresence(PresenceState.Unknown, full_status=f"Last Played Game: "
+                            f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+
+    async def get_gta_online_stats(self, user_id, friend_name):
+        class GTAOnlineStatParser(HTMLParser):
+            char_rank = None
+            char_title = None
+            rank_internal_pos = None
+
+            def handle_starttag(self, tag, attrs):
+                if not self.rank_internal_pos and tag == "div" and ('class', 'rankHex right-grad') in \
+                        attrs:
+                    self.rank_internal_pos = self.getpos()
+
+            def handle_data(self, data):
+                if self.getpos() == (self.rank_internal_pos + 1):
+                    self.char_rank = data
+                elif self.getpos() == (self.rank_internal_pos + 2):
+                    self.char_title = data
+
+            def get_stats(self):
+                return self.char_rank, self.char_title
+
+        url = ("https://socialclub.rockstargames.com/games/gtav/career/overviewAjax?character=Freemode&"
+               f"rockstarIds={user_id}&slot=Freemode&nickname={friend_name}&gamerHandle=&gamerTag=&category=Overview"
+               f"&_={int(time() * 1000)}")
+        headers = {
+            'Accept': 'text/html, */*',
+            'Cookie': await self.get_cookies_for_headers(),
+            "RequestVerificationToken": await self._get_request_verification_token(
+                "https://socialclub.rockstargames.com/games/gtav/pc/career/overview/gtaonline",
+                "https://socialclub.rockstargames.com/games"),
+            'User-Agent': USER_AGENT
+        }
+        resp = await self._current_session.get(url, headers=headers)
+        await self._update_cookies_from_response(resp)
+        resp_text = await resp.text()
+        parser = GTAOnlineStatParser()
+        parser.feed(resp_text)
+        rank, title = parser.get_stats()
+        parser.close()
+        if rank and title:
+            log.debug(f"ROCKSTAR_GTA_ONLINE_STATS: [{friend_name}] Grand Theft Auto Online: Rank {rank} {title}")
+            return UserPresence(PresenceState.Unknown, full_status=f"Grand Theft Auto Online: Rank {rank} {title}")
+        else:
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_GTA_ONLINE_STATS_MISSING: {friend_name} (Rockstar ID: {user_id}) does not have "
+                          f"any character stats for Grand Theft Auto Online. Returning default user presence...")
+            return await self.get_last_played_game(friend_name)
+
+    async def get_rdo_stats(self, user_id, friend_name):
+        headers = {
+            'Authorization': f'Bearer {self._current_sc_token}',
+            'User-Agent': USER_AGENT,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+        resp = await self._current_session.get("https://scapi.rockstargames.com/games/rdo/navigationData?platform=pc&"
+                                               f"rockstarId={user_id}", headers=headers)
+        await self._update_cookies_from_response(resp)
+        resp_json = await resp.json
+        if str(resp_json['status']) == 'false':
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS_MISSING: {friend_name} (Rockstar ID: {user_id}) does not "
+                          f"have any character stats for Red Dead Online. Returning default user presence...")
+            return await self.get_last_played_game(friend_name)
+        char_name = resp_json['result']['onlineCharacterName']
+        char_rank = resp_json['result']['onlineCharacterRank']
+
+        # As an added bonus, we will find the user's preferred role (bounty hunter, collector, or trader). This is
+        # determined by the acquired rank in each role.
+        resp = await self._current_session.get("https://scapi.rockstargames.com/games/rdo/awards/progress?platform=pc&"
+                                               f"rockstarId={user_id}", headers=headers)
+        await self._update_cookies_from_response(resp)
+        resp_json = await resp.json()
+        ranks = {
+            "Bounty Hunter": None,
+            "Collector": None,
+            "Trader": None
+        }
+        for goal in resp_json['challengeGoals']:
+            if goal['id'] == "MPAC_Role_BountyHunter_001":
+                ranks['Bounty Hunter'] = goal['goalValue']
+            elif goal['id'] == "MPAC_Role_Collector_001":
+                ranks['Collector'] = goal['goalValue']
+            elif goal['id'] == "MPAC_Role_Trader_001":
+                ranks['Trader'] = goal['goalValue']
+            for rank, val in ranks.items():
+                if not val:
+                    break
+            else:
+                break
+        max_rank = 0
+        highest_rank = ""
+        for rank, val in ranks.items():
+            if val > max_rank:
+                max_rank = val
+                highest_rank = rank
+            # If two roles have the same rank, then the character is considered to have a Hybrid role.
+            elif val == max_rank and max_rank != 0:
+                highest_rank = "Hybrid"
+                break
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS: [{friend_name}] Red Dead Online: {char_name} - Rank {char_rank}"
+                      f" {highest_rank}")
+        return UserPresence(PresenceState.Unknown, full_status=(f"Red Dead Online: {char_name} - Rank {char_rank} "
+                                                                f"{highest_rank}"))
 
     async def refresh_credentials(self):
         while self._refreshing:

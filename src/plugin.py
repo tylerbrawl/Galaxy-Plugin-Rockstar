@@ -1,7 +1,7 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
-from galaxy.api.consts import Platform
+from galaxy.api.consts import Platform, PresenceState
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, UserInfo, Achievement, \
-    GameTime
+    GameTime, UserPresence
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, NetworkError, UnknownError
 
 from file_read_backwards import FileReadBackwards
@@ -17,7 +17,7 @@ import sys
 import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
-    ARE_ACHIEVEMENTS_IMPLEMENTED
+    ARE_ACHIEVEMENTS_IMPLEMENTED, CONFIG_OPTIONS
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id
 from http_client import BackendClient
 from version import __version__
@@ -553,6 +553,22 @@ class RockstarPlugin(Plugin):
         log.debug("ROCKSTAR_GAME_TIME: Pushing the cache of played game times to the persistent cache...")
         self.persistent_cache['game_time_cache'] = pickle.dumps(self.game_time_cache).hex()
         self.push_cache()
+
+    def get_friend_user_name_from_user_id(self, user_id):
+        for friend in self.friends_cache:
+            if friend.user_id == user_id:
+                return friend.user_name
+        return None
+
+    async def get_user_presence(self, user_id, context):
+        friend_name = self.get_friend_user_name_from_user_id(user_id)
+        switch = {
+            0: UserPresence(PresenceState.Unknown),  # 0 - Disable User Presence
+            1: await self._http_client.get_last_played_game(friend_name),  # 1 - Get Last Played Game
+            2: await self._http_client.get_gta_online_stats(user_id, friend_name),  # 2 - Get GTA Online Character Stats
+            3: await self._http_client.get_rdo_stats(user_id, friend_name)  # 3 - Get Red Dead Online Character Stats
+        }
+        return switch[CONFIG_OPTIONS['user_presence_mode']]
 
     async def open_rockstar_browser(self):
         # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.

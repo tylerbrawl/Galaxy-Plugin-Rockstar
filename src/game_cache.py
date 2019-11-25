@@ -152,6 +152,14 @@ def get_game_title_id_from_google_tag_id(google_tag_id):
     return None
 
 
+def get_game_title_id_from_ugc_title_id(ugc_id):
+    # The ugc ID for a game seems to be related to the Google Tag ID of the game, although this could be wrong.
+    for game, d in games_cache.items():
+        if 'googleTagId' in d and d['googleTagId'].lower() == ugc_id.lower():
+            return game
+    return None
+
+
 def get_achievement_id_from_ros_title_id(ros_title_id):
     # The achievementId value is used by the Social Club API to uniquely identify games. Here, it is used to get the
     # list of a game's achievements, as well as a user's unlocked achievements.
