@@ -67,6 +67,7 @@ games_cache = {
     #    "guid": "L.A. Noire: The VR Case Files",
     #    "rosTitleId": 24,
     #    "onlineTitleId": 35,  # For some reason, this is the same as L.A. Noire's ID.
+    #    "googleTagId": "LANVR_PC",
     #    "launchEXE": "LANoireVR.exe",
     #    "achievementId": "lanvr",
     #    "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
@@ -88,6 +89,7 @@ games_cache = {
         "guid": "Grand Theft Auto: Vice City",
         "rosTitleId": 27,
         "onlineTitleId": 33,
+        "googleTagId": "GTAVC_PC",
         "launchEXE": "gta-vc.exe",
         "achievementId": None,
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
