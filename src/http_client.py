@@ -1,4 +1,5 @@
 from galaxy.http import create_client_session
+from galaxy.api.errors import AuthenticationRequired
 from http.cookies import SimpleCookie
 
 from consts import USER_AGENT, LOG_SENSITIVE_DATA
@@ -229,6 +230,13 @@ class BackendClient:
                                                    allow_redirects=False)
             # aiohttp allows you to get a specified cookie from the previous response.
             filtered_cookies = resp.cookies
+            if "TS019978c2" in filtered_cookies:
+                ts_val = filtered_cookies['TS019978c2'].value
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_NEW_TS_COOKIE: {ts_val}")
+                else:
+                    log.debug("ROCKSTAR_NEW_TS_COOKIE: ***")
+                self._current_session.cookie_jar.update_cookies({'TS019978c2': ts_val})
             if "ScAuthTokenData" in filtered_cookies:
                 new_auth = filtered_cookies['ScAuthTokenData'].value
                 if LOG_SENSITIVE_DATA:
@@ -252,12 +260,17 @@ class BackendClient:
             return await resp.json()
         except Exception as e:
             if message is not None:
-                log.error(message)
+                log.warning(message)
             else:
-                log.error("ROCKSTAR_USER_JSON_ERROR: The request to get the get-user.json file resulted in this"
-                          " exception: " + repr(e))
-            traceback.print_exc()
-            raise
+                log.warning("ROCKSTAR_USER_JSON_WARNING: The request to get the get-user.json file resulted in this"
+                            " exception: " + repr(e) + ". Attempting to refresh credentials...")
+            try:
+                await self.refresh_credentials()
+                return await self._get_user_json(message)
+            except Exception:
+                log.exception("ROCKSTAR_USER_JSON_ERROR: The request to get the get-user.json file failed even after "
+                              "attempting to refresh credentials. Revoking user authentication...")
+                raise AuthenticationRequired
 
     async def _get_bearer(self):
         try:
@@ -364,9 +377,8 @@ class BackendClient:
             if old_auth != new_auth:
                 log.debug("ROCKSTAR_REFRESH_SUCCESS: The user has been successfully re-authenticated!")
         except Exception as e:
-            log.debug("ROCKSTAR_REFRESH_FAILURE: The attempt to re-authenticate the user has failed with the exception "
-                      + repr(e) + ". Logging the user out...")
-            traceback.print_exc()
+            log.exception("ROCKSTAR_REFRESH_FAILURE: The attempt to re-authenticate the user has failed with the "
+                          "exception " + repr(e) + ". Logging the user out...")
             raise
 
     async def authenticate(self):

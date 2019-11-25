@@ -1,4 +1,3 @@
-import os
 import sys
 
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
@@ -7,9 +6,7 @@ LOG_SENSITIVE_DATA = False
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
-IS_WINDOWS = True if sys.platform == 'win32' else False
-
-PLUGIN_HTML_PATH = os.path.join(__file__, '..', 'RockstarFPGen.html')
+IS_WINDOWS = (sys.platform == 'win32')
 
 ROCKSTAR_LAUNCHERPATCHER_EXE = "LauncherPatcher.exe"
 ROCKSTAR_LAUNCHER_EXE = "Launcher.exe"  # It's a terribly generic name for a launcher.
