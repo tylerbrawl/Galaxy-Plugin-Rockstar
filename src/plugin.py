@@ -75,6 +75,11 @@ class RockstarPlugin(Plugin):
     def is_authenticated(self):
         return self._http_client.is_authenticated()
 
+    @staticmethod
+    def loads_js(file):
+        with open(os.path.join(__file__, '..', 'js', file), 'r') as f:
+            return f.read()
+
     def handshake_complete(self):
         game_time_cache_in_persistent_cache = False
         for key, value in self.persistent_cache.items():
@@ -110,7 +115,15 @@ class RockstarPlugin(Plugin):
                       "than v0.3, and their credentials might be corrupted. Forcing a log-out...")
             raise InvalidCredentials()
         if not stored_credentials:
-            return NextStep("web_session", AUTH_PARAMS)
+            # We will create the fingerprint JavaScript dictionary here.
+            fingerprint_js = {
+                r'https://www.rockstargames.com/': [
+                    self.loads_js("fingerprint2.js"),
+                    self.loads_js("HashGen.js"),
+                    self.loads_js("GenerateFingerprint.js")
+                ]
+            }
+            return NextStep("web_session", AUTH_PARAMS, js=fingerprint_js)
         try:
             log.info("INFO: The credentials were successfully obtained.")
             if LOG_SENSITIVE_DATA:

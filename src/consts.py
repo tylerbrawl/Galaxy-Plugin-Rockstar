@@ -23,7 +23,7 @@ AUTH_PARAMS = {
     "window_title": "Login to Rockstar Games Social Club",
     "window_width": 700,
     "window_height": 600,
-    "start_uri": "https://tylerbrawl.github.io/Galaxy-Plugin-Rockstar/index.html",
+    "start_uri": "https://www.rockstargames.com/auth/scauth-login",
     "end_uri_regex": r"https://www.rockstargames.com/auth/get-user.json.*"
 }
 

@@ -50,6 +50,12 @@ class LocalClient:
             # Console Spam (Enable this if you need to.)
             return None
 
+    def does_exe_exist(self, exe_name):
+        tasklist_output = subprocess.Popen(f'tasklist /FI "IMAGENAME eq {exe_name}"', stdout=subprocess.PIPE)
+        for line in tasklist_output.stdout:
+            new_line = line.decode(locale.getpreferredencoding())
+            return new_line != 'INFO: No tasks are running which match the specified criteria.'
+
     async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
         find_actual_pid = subprocess.Popen(
@@ -65,26 +71,19 @@ class LocalClient:
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
-        path = path[:path.rindex('"')]
+        path = path[:path.rindex('"')] if '"' in path else path
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
-
-        '''The old method below for launching games has been deprecated with the release of RDR 2.
-        exe_name = games_cache[title_id]['launchEXE']
-        game_path = path[:path.rindex('"')] + "\\" + exe_name + "\""
+        game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.Popen(game_path, stdout=self.FNULL, stderr=self.FNULL, shell=False)
-        '''
-
-        log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {path}\\{games_cache[title_id]['launchEXE']}...")
-        subprocess.call(self.installer_location + " -launchTitleInFolder=" + path, stdout=self.FNULL, stderr=self.FNULL,
-                        shell=False)
+        subprocess.call(f'{game_path} -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
+                        stderr=self.FNULL, shell=False)
         launcher_pid = None
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
-        log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
+        log.debug(f"ROCKSTAR_LAUNCHER_PATCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
         retries = 30
@@ -98,7 +97,7 @@ class LocalClient:
                 # If it has been this long and the game still has not launched, then it might be downloading an update.
                 # We should refresh the retries counter if the Rockstar Games Launcher is still running; otherwise, we
                 # return None.
-                if check_if_process_exists(launcher_pid):
+                if self.does_exe_exist("Launcher.exe"):
                     log.debug(f"ROCKSTAR_LAUNCH_WAITING: The game {title_id} has not launched yet, but the Rockstar "
                               f"Games Launcher is still running. Restarting the loop...")
                     retries += 30
