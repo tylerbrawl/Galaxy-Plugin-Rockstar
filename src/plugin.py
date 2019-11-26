@@ -6,6 +6,7 @@ from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, Networ
 
 from file_read_backwards import FileReadBackwards
 from time import time
+from typing import List
 import asyncio
 import dataclasses
 import datetime
@@ -285,8 +286,7 @@ class RockstarPlugin(Plugin):
         second = int(date[17:19])
         return int(datetime.datetime(year, month, day, hour, minute, second).timestamp())
 
-    async def get_friends(self):
-        # NOTE: This will return a list of type UserInfo.
+    async def get_friends(self) -> List[UserInfo]:
         # The Social Club website returns a list of the current user's friends through the url
         # https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&pageIndex=0&pageSize=30.
         # The nickname URL parameter is left blank because the website instead uses the bearer token to get the correct
@@ -313,26 +313,7 @@ class RockstarPlugin(Plugin):
 
         # Now, we need to get the information about the friends.
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return_list = []
-        for i in range(0, len(friends_list)):
-            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"
-            profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
-            friend = UserInfo(friends_list[i]['rockstarId'],
-                              friends_list[i]['displayName'],
-                              avatar_url=avatar_uri,
-                              profile_url=profile_uri)
-            return_list.append(friend)
-            for cached_friend in self.friends_cache:
-                if cached_friend.user_id == friend.user_id:
-                    break
-            else:
-                self.friends_cache.append(friend)
-                self.add_friend(friend)
-            if LOG_SENSITIVE_DATA:
-                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                          str(friend.user_id) + ")")
-            else:
-                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
+        return_list = [friend for friend in await self._parse_friends(friends_list)]
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
@@ -340,19 +321,23 @@ class RockstarPlugin(Plugin):
                 try:
                     url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                            "pageIndex=" + str(i) + "&pageSize=30")
-                    return_list.append(friend for friend in await self._get_friends(url))
+                    for friend in await self._get_friends(url):
+                        return_list.append(friend)
                 except TimeoutError:
                     log.warning(f"ROCKSTAR_FRIENDS_TIMEOUT: The request to get the user's friends at page index {i} "
                                 f"timed out. Returning the cached list...")
                     return self.friends_cache
         return return_list
 
-    async def _get_friends(self, url):
+    async def _get_friends(self, url: str) -> List[UserInfo]:
         try:
             current_page = await self._http_client.get_json_from_request_strict(url)
         except TimeoutError:
             raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
+        return [friend for friend in await self._parse_friends(friends_list)]
+
+    async def _parse_friends(self, friends_list: dict) -> List[UserInfo]:
         return_list = []
         for i in range(0, len(friends_list)):
             avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"

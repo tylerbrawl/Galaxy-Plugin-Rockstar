@@ -40,9 +40,7 @@ class LocalClient:
 
     async def kill_launcher(self):
         # The Launcher exits without displaying an error message if LauncherPatcher.exe is killed before Launcher.exe.
-        subprocess.Popen("taskkill /f /im LauncherPatcher.exe", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        await asyncio.sleep(1)
-        subprocess.Popen("taskkill /f /im Launcher.exe", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen("taskkill /im SocialClubHelper.exe")
 
     def get_path_to_game(self, title_id):
         try:
@@ -78,9 +76,14 @@ class LocalClient:
         subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, shell=False)
         launcher_pid = None
+        retries = 120
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
+            retries -= 1
+            if retries == 0:
+                log.debug("ROCKSTAR_LAUNCHER_PID_FAILURE: The Rockstar Games Launcher took too long to launch!")
+                return None
         log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
