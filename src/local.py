@@ -78,9 +78,14 @@ class LocalClient:
         subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, shell=False)
         launcher_pid = None
+        retries = 120
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
+            retries -= 1
+            if retries == 0:
+                log.debug("ROCKSTAR_LAUNCHER_PID_FAILURE: The Rockstar Games Launcher took too long to launch!")
+                return None
         log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
