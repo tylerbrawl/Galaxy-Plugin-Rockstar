@@ -40,9 +40,7 @@ class LocalClient:
 
     async def kill_launcher(self):
         # The Launcher exits without displaying an error message if LauncherPatcher.exe is killed before Launcher.exe.
-        subprocess.Popen("taskkill /f /im LauncherPatcher.exe")
-        await asyncio.sleep(1)
-        subprocess.Popen("taskkill /f /im Launcher.exe")
+        subprocess.Popen("taskkill /im SocialClubHelper.exe")
 
     def get_path_to_game(self, title_id):
         try:
