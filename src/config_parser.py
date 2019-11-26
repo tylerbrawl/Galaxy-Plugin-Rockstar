@@ -56,34 +56,39 @@ DEFAULT_CONFIG_PATH = os.path.join(os.path.abspath(__file__), '..', 'default_con
 
 
 def init_config_options(callback=False):
-    if not callback:
+    config = None
+    try:
+        config = open(CONFIG_PATH, "r")
+        options = _parse_config(config)
+        config.close()
+        return options
+    except FileNotFoundError:
+        log.warning("ROCKSTAR_CONFIG_MISSING: The config.cfg file could not be found in the root of the directory!")
         try:
-            return _parse_config(open(CONFIG_PATH, "r"))
+            copy_default_config()
         except FileNotFoundError:
-            log.warning("ROCKSTAR_CONFIG_MISSING: The config.cfg file could not be found in the root of the directory!")
-            try:
-                copy_default_config()
-                init_config_options(callback=True)
-            except FileNotFoundError:
-                log.error("ROCKSTAR_DEFAULT_CONFIG_MISSING: The default_config.cfg file could not be found in the root "
-                          "of the directory! Closing the plugin...")
-                raise BackendError
-            except Exception as e:
-                log.exception("ROCKSTAR_DEFAULT_COPY_ERROR: Attempting to copy the default_config.cfg file to a new "
-                              f"config.cfg resulted in this exception: {repr(e)}.")
-                raise BackendError
-        except Exception as e:
-            log.exception(f"ROCKSTAR_READ_CONFIG_ERROR: The exception {repr(e)} was thrown while attempting to read the"
-                          f" existing config.cfg file.")
+            log.error("ROCKSTAR_DEFAULT_CONFIG_MISSING: The default_config.cfg file could not be found in the root "
+                      "of the directory! Closing the plugin...")
             raise BackendError
-    else:
+        except Exception as e:
+            log.exception("ROCKSTAR_DEFAULT_COPY_ERROR: Attempting to copy the default_config.cfg file to a new "
+                          f"config.cfg resulted in this exception: {repr(e)}.")
+            raise BackendError
         try:
-            return _parse_config(open(CONFIG_PATH, "r"))
-        except Exception as e:
-            log.exception(f"ROCKSTAR_READ_CONFIG_CALLBACK_ERROR: Attempting to read the config.cfg file resulted in "
-                          f"the exception {repr(e)} even after the default_config.cfg file was replicated. Closing the"
-                          f" plugin...")
-            raise BackendError
+            return init_config_options(callback=True)
+        except BackendError:
+            raise
+    except Exception as e:
+        if config:
+            config.close()
+        if callback:
+            log.exception(f"ROCKSTAR_READ_CONFIG_CALLBACK_ERROR: Attempting to read the config.cfg file resulted in"
+                          f" the exception {repr(e)} even after the default_config.cfg file was replicated. Closing"
+                          f" the plugin...")
+        else:
+            log.exception(f"ROCKSTAR_READ_CONFIG_ERROR: The exception {repr(e)} was thrown while attempting to read"
+                          f" the existing config.cfg file.")
+        raise BackendError
 
 
 def copy_default_config():
@@ -106,7 +111,7 @@ def copy_default_config():
     config.close()
 
 
-def _parse_config(config):
+def _parse_config(config) -> dict:
     options_dict = {}
     for key in CONFIG_OPTIONS_INFO:
         options_dict[key] = Option()
