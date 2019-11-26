@@ -615,6 +615,11 @@ class BackendClient:
         resp = await self._current_session.post("https://socialclub.rockstargames.com/connect/refreshaccess", data=data,
                                                 headers=headers, allow_redirects=True)
         await self._update_cookies_from_response(resp)
+        if resp.status == 401:
+            log.warning("ROCKSTAR_SC_LIGHT_REFRESH_FAILED: The light method for refreshing the Social Club user's "
+                        "authentication has failed. Falling back to the strict refresh method...")
+            await self.refresh_credentials()
+            return
         filtered_cookies = resp.cookies
         if "BearerToken" in filtered_cookies:
             self._current_sc_token = filtered_cookies["BearerToken"].value
