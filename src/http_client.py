@@ -83,7 +83,7 @@ class CookieJar(aiohttp.CookieJar):
 
 class BackendClient:
     def __init__(self, store_credentials):
-        self._debug_always_refresh = CONFIG_OPTIONS['debug_always_refresh'].get()
+        self._debug_always_refresh = CONFIG_OPTIONS['debug_always_refresh']
         self._store_credentials = store_credentials
         self.bearer = None
         # The refresh token here is the RMT cookie. The other refresh token is the rsso cookie. The RMT cookie is blank
@@ -355,7 +355,6 @@ class BackendClient:
 
     async def get_played_games(self, callback=False):
         try:
-            await self._refresh_credentials_social_club_light(allow_failure=True)
             resp_json = await self._get_google_tag_data()
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_SC_TAG_DATA: {resp_json}")
@@ -374,7 +373,7 @@ class BackendClient:
         except Exception:
             if not callback:
                 try:
-                    await self.refresh_credentials()
+                    await self._refresh_credentials_social_club_light()
                     return await self.get_played_games(callback=True)
                 except Exception as e:
                     log.exception("ROCKSTAR_PLAYED_GAMES_ERROR: The request to scrape the user's played games resulted "
@@ -506,6 +505,7 @@ class BackendClient:
 
     async def refresh_credentials(self):
         while self._refreshing:
+            # If we are already refreshing the credentials, then no other refresh requests should be accepted.
             await asyncio.sleep(3)
         self._refreshing = True
         await self._refresh_credentials_base()
@@ -528,8 +528,6 @@ class BackendClient:
         # Finally, this last request updates the cookies that are used for further authentication.
         try:
             url = "https://signin.rockstargames.com/connect/cors/check/rsg"
-            rsso_name = None
-            rsso_value = None
             for morsel in self._current_session.cookie_jar.__iter__():
                 if re.search("^rsso", morsel.key):
                     rsso_name = morsel.key
@@ -542,7 +540,6 @@ class BackendClient:
             headers = {
                 "Accept": "application/json, text/plain, */*",
                 "Cookie": await self.get_cookies_for_headers(),
-                          # "RMT=" + self.get_refresh_token() + "; " + rsso_name + "=" + rsso_value,
                 "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
                 "Host": "signin.rockstargames.com",
                 "Origin": "https://www.rockstargames.com",
@@ -601,10 +598,11 @@ class BackendClient:
             self._refreshing = False
             raise InvalidCredentials
 
-    async def _refresh_credentials_social_club_light(self, allow_failure=False):
+    async def _refresh_credentials_social_club_light(self):
         # If the user attempts to use the Social Club bearer token within ten hours of having received its latest
         # version, then they may simply make a POST request to
         # https://socialclub.rockstargames.com/connect/refreshaccess in order to get a new bearer token.
+        self._refreshing = True
         old_auth = self._current_sc_token
         headers = {
             "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -612,32 +610,33 @@ class BackendClient:
             "X-Requested-With": "XMLHttpRequest"
         }
         data = f"accessToken={old_auth}"
-        resp = await self._current_session.post("https://socialclub.rockstargames.com/connect/refreshaccess", data=data,
-                                                headers=headers, allow_redirects=True)
-        await self._update_cookies_from_response(resp)
-        if resp.status == 401:
-            log.warning("ROCKSTAR_SC_LIGHT_REFRESH_FAILED: The light method for refreshing the Social Club user's "
-                        "authentication has failed. Falling back to the strict refresh method...")
-            await self.refresh_credentials()
-            return
-        filtered_cookies = resp.cookies
-        if "BearerToken" in filtered_cookies:
-            self._current_sc_token = filtered_cookies["BearerToken"].value
-            if LOG_SENSITIVE_DATA:
-                log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token}")
+        try:
+            resp = await self._current_session.post("https://socialclub.rockstargames.com/connect/refreshaccess",
+                                                    data=data, headers=headers, allow_redirects=True)
+            await self._update_cookies_from_response(resp)
+            filtered_cookies = resp.cookies
+            if "BearerToken" in filtered_cookies:
+                self._current_sc_token = filtered_cookies["BearerToken"].value
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token}")
+                else:
+                    log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token[:5]}***{self._current_sc_token[-3:]}")
+                if old_auth != self._current_sc_token:
+                    log.debug("ROCKSTAR_SC_LIGHT_REFRESH_SUCCESS: The Social Club user was successfully "
+                              "re-authenticated!")
+                self._refreshing = False
             else:
-                log.debug(f"ROCKSTAR_SC_BEARER_NEW: {self._current_sc_token[:5]}***{self._current_sc_token[-3:]}")
-            if old_auth != self._current_sc_token:
-                log.debug("ROCKSTAR_SC_LIGHT_REFRESH_SUCCESS: The Social Club user was successfully re-authenticated!")
-        else:
-            # If a request was made to get a new bearer token but a new token was not granted, then it is assumed that
-            # the alternate longer method for refreshing the user's credentials is required.
-            if allow_failure:
-                log.debug("ROCKSTAR_SC_LIGHT_REFRESH_ATTEMPTED: A new bearer token was not found with this request. "
-                          "Proceeding anyways...")
-            else:
+                # If a request was made to get a new bearer token but a new token was not granted, then it is assumed
+                # that the alternate longer method for refreshing the user's credentials is required.
+                log.warning("ROCKSTAR_SC_LIGHT_REFRESH_FAILED: The light method for refreshing the Social Club "
+                            "user's authentication has failed. Falling back to the strict refresh method...")
+                self._refreshing = False
+                await self.refresh_credentials()
+        except aiohttp.ClientResponseError as e:
+            if e.status == 401:
                 log.warning("ROCKSTAR_SC_LIGHT_REFRESH_FAILED: The light method for refreshing the Social Club user's "
                             "authentication has failed. Falling back to the strict refresh method...")
+                self._refreshing = False
                 await self.refresh_credentials()
 
     async def _refresh_credentials_social_club(self):
@@ -726,6 +725,7 @@ class BackendClient:
             raise InvalidCredentials
 
     async def authenticate(self):
+        await self._refresh_credentials_social_club()
         if self._auth_lost_callback or self._debug_always_refresh:
             # We need to refresh the credentials.
             await self.refresh_credentials()

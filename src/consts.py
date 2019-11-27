@@ -1,6 +1,6 @@
 import sys
 
-from config_parser import init_config_options
+from galaxyutils.config_parser import Option, get_config_options
 
 
 class NoLogFoundException(Exception):
@@ -13,9 +13,13 @@ class NoGamesInLogException(Exception):
 
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
 
-CONFIG_OPTIONS = init_config_options()
+CONFIG_OPTIONS = get_config_options([
+    Option(option_name='user_presence_mode', default_value=1, allowed_values=[i for i in range(0, 4)]),
+    Option(option_name='log_sensitive_data'),
+    Option(option_name='debug_always_refresh')
+])
 
-LOG_SENSITIVE_DATA = CONFIG_OPTIONS['log_sensitive_data'].get()
+LOG_SENSITIVE_DATA = CONFIG_OPTIONS['log_sensitive_data']
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
