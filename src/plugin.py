@@ -78,7 +78,7 @@ class RockstarPlugin(Plugin):
 
     @staticmethod
     def loads_js(file):
-        with open(os.path.join(__file__, '..', 'js', file), 'r') as f:
+        with open(os.path.abspath(os.path.join(__file__, '..', 'js', file)), 'r') as f:
             return f.read()
 
     def handshake_complete(self):
