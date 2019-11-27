@@ -730,7 +730,10 @@ class BackendClient:
             # We need to refresh the credentials.
             await self.refresh_credentials()
             self._auth_lost_callback = None
-        self.bearer = await self._get_bearer()
+        try:
+            self.bearer = await self._get_bearer()
+        except Exception:
+            raise InvalidCredentials
         if LOG_SENSITIVE_DATA:
             log.debug("ROCKSTAR_HTTP_CHECK: Got bearer token: " + self.bearer)
         else:
