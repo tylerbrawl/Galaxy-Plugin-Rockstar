@@ -1,5 +1,5 @@
 from galaxy.http import create_client_session
-from galaxy.api.errors import AuthenticationRequired
+from galaxy.api.errors import AuthenticationRequired, InvalidCredentials
 from http.cookies import SimpleCookie
 
 from consts import USER_AGENT, LOG_SENSITIVE_DATA
@@ -184,7 +184,7 @@ class BackendClient:
     async def get_json_from_request_strict(self, url, include_default_headers=True, additional_headers=None):
         headers = additional_headers if additional_headers is not None else {}
         if include_default_headers:
-            headers["Authorization"] = f"Bearer {await self._get_bearer()}"
+            headers["Authorization"] = f"Bearer {self.bearer}"
             headers["X-Requested-With"] = "XMLHttpRequest"
             headers["User-Agent"] = USER_AGENT
         try:
@@ -386,7 +386,10 @@ class BackendClient:
             # We need to refresh the credentials.
             await self.refresh_credentials()
             self._auth_lost_callback = None
-        self.bearer = await self._get_bearer()
+        try:
+            self.bearer = await self._get_bearer()
+        except Exception:
+            raise InvalidCredentials
         if LOG_SENSITIVE_DATA:
             log.debug("ROCKSTAR_HTTP_CHECK: Got bearer token: " + self.bearer)
         else:
