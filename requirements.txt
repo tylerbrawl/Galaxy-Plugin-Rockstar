@@ -1,4 +1,4 @@
-galaxy.plugin.api==0.58
+galaxy.plugin.api==0.59
 python-dateutil==2.8.0
 file_read_backwards==2.0.0
 yarl==1.3.0
