@@ -503,6 +503,17 @@ class BackendClient:
         return UserPresence(PresenceState.Unknown, full_status=(f"Red Dead Online: {char_name} - Rank {char_rank} "
                                                                 f"{highest_rank}"))
 
+    def _get_rsso_cookie(self) -> (str, str):
+        for morsel in self._current_session.cookie_jar.__iter__():
+            if re.search("^rsso", morsel.key):
+                rsso_name = morsel.key
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_RSSO_NAME: {rsso_name}")
+                rsso_value = morsel.value
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_RSSO_VALUE: {rsso_value}")
+                return rsso_name, rsso_value
+
     async def refresh_credentials(self):
         while self._refreshing:
             # If we are already refreshing the credentials, then no other refresh requests should be accepted.
@@ -528,15 +539,6 @@ class BackendClient:
         # Finally, this last request updates the cookies that are used for further authentication.
         try:
             url = "https://signin.rockstargames.com/connect/cors/check/rsg"
-            for morsel in self._current_session.cookie_jar.__iter__():
-                if re.search("^rsso", morsel.key):
-                    rsso_name = morsel.key
-                    if LOG_SENSITIVE_DATA:
-                        log.debug(f"ROCKSTAR_RSSO_NAME: {rsso_name}")
-                    rsso_value = morsel.value
-                    if LOG_SENSITIVE_DATA:
-                        log.debug(f"ROCKSTAR_RSSO_VALUE: {rsso_value}")
-                    break
             headers = {
                 "Accept": "application/json, text/plain, */*",
                 "Cookie": await self.get_cookies_for_headers(),
@@ -681,9 +683,14 @@ class BackendClient:
                 raise BackendError
 
             url = "https://signin.rockstargames.com/api/connect/check/socialclub"
+            rsso_name, rsso_value = self._get_rsso_cookie()
             headers = {
                 "Content-Type": "application/json",
-                "Cookie": await self.get_cookies_for_headers(),
+                # A 400 error is returned by lazily submitting all cookies, so we need to send only the cookies that
+                # matter.
+                "Cookie": f"RMT={self.get_refresh_token()};{rsso_name}={rsso_value}",
+                "Referer": ("https://signin.rockstargames.com/connect/check/socialclub?returnUrl=%2FBlocker%2FAuthCheck"
+                            "&lang=en-US"),
                 "User-Agent": USER_AGENT,
                 "X-Requested-With": "XMLHttpRequest"
             }
@@ -691,10 +698,19 @@ class BackendClient:
                 "fingerprint": self._fingerprint,
                 "returnUrl": "/Blocker/AuthCheck"
             }
-            resp = await self._current_session.post(url, json=data, headers=headers)
+            # Using a context manager here will prevent the extra cookies from being sent.
+            async with create_client_session() as s:
+                resp = await s.post(url, json=data, headers=headers)
             await self._update_cookies_from_response(resp)
+            # We need to set the new refresh token here, if it is updated.
+            try:
+                self.set_refresh_token(resp.cookies['RMT'].value)
+            except KeyError:
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_RMT_MISSING: The RMT cookie is missing, presumably because the user has not "
+                              "enabled two-factor authentication. Proceeding anyways...")
+                self.set_refresh_token('')
             resp_json = await resp.json()
-
             url = resp_json["redirectUrl"]
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_SC_REDIRECT_URL: {url}")
