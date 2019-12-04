@@ -1,5 +1,5 @@
 from galaxy.http import create_client_session
-from galaxy.api.errors import AuthenticationRequired, BackendError, InvalidCredentials
+from galaxy.api.errors import AuthenticationRequired, BackendError, InvalidCredentials, NetworkError
 from galaxy.api.types import UserPresence
 from galaxy.api.consts import PresenceState
 from http.cookies import SimpleCookie
@@ -734,6 +734,10 @@ class BackendClient:
                         log.debug("ROCKSTAR_SC_REFRESH_SUCCESS: The Social Club user has been successfully "
                                   "re-authenticated!")
                     break
+        except aiohttp.ClientConnectorError:
+            log.error(f"ROCKSTAR_PLUGIN_OFFLINE: The user is not online.")
+            self._refreshing = False
+            raise NetworkError
         except Exception as e:
             log.exception(f"ROCKSTAR_SC_REFRESH_FAILURE: The attempt to re-authenticate the user on the Social Club has"
                           f" failed with the exception {repr(e)}. Logging the user out...")
