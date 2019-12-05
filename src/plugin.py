@@ -342,8 +342,8 @@ class RockstarPlugin(Plugin):
         for i in range(0, len(friends_list)):
             avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"
             profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
-            friend = UserInfo(friends_list[i]['rockstarId'],
-                              friends_list[i]['displayName'],
+            friend = UserInfo(user_id=str(friends_list[i]['rockstarId']),
+                              user_name=friends_list[i]['displayName'],
                               avatar_url=avatar_uri,
                               profile_url=profile_uri)
             return_list.append(friend)
@@ -352,7 +352,6 @@ class RockstarPlugin(Plugin):
                     break
             else:  # An else-statement occurs after a for-statement if the latter finishes WITHOUT breaking.
                 self.friends_cache.append(friend)
-                self.add_friend(friend)
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
                           str(friend.user_id) + ")")

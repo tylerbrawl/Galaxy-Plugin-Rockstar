@@ -797,7 +797,7 @@ class BackendClient:
                       str(rockstar_id))
         else:
             log.debug(f"ROCKSTAR_HTTP_CHECK: Got display name: {display_name[:1]}*** / Got Rockstar ID: ***")
-        self.user = {"display_name": display_name, "rockstar_id": rockstar_id}
+        self.user = {"display_name": display_name, "rockstar_id": str(rockstar_id)}
         log.debug("ROCKSTAR_STORE_CREDENTIALS: Preparing to store credentials...")
         # log.debug(self.get_credentials()) - Reduce Console Spam (Enable this if you need to.)
         self._store_credentials(self.get_credentials())
