@@ -6,7 +6,7 @@ from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, Networ
 
 from file_read_backwards import FileReadBackwards
 from time import time
-from typing import List
+from typing import List, Any
 import asyncio
 import dataclasses
 import datetime
@@ -313,7 +313,7 @@ class RockstarPlugin(Plugin):
 
         # Now, we need to get the information about the friends.
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return_list = [friend for friend in await self._parse_friends(friends_list)]
+        return_list = await self._parse_friends(friends_list)
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
@@ -335,7 +335,7 @@ class RockstarPlugin(Plugin):
         except TimeoutError:
             raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return [friend for friend in await self._parse_friends(friends_list)]
+        return await self._parse_friends(friends_list)
 
     async def _parse_friends(self, friends_list: dict) -> List[UserInfo]:
         return_list = []
@@ -515,14 +515,14 @@ class RockstarPlugin(Plugin):
                 total_time_played = self.game_time_cache[title_id]['time_played'] + minutes_passed
                 self.game_time_cache[title_id]['time_played'] = total_time_played
                 self.game_time_cache[title_id]['last_played'] = current_time
-                return GameTime(game_id, int(total_time_played), int(current_time))
+                return GameTime(game_id=game_id, time_played=int(total_time_played), last_played_time=int(current_time))
             else:
                 # The game has not been played before, so a new entry in the game_time_cache dictionary must be made.
                 self.game_time_cache[title_id] = {
                     'time_played': minutes_passed,
                     'last_played': current_time
                 }
-                return GameTime(game_id, int(minutes_passed), int(current_time))
+                return GameTime(game_id=game_id, time_played=int(minutes_passed), last_played_time=int(current_time))
         else:
             # The game is no longer running (and there is no relevant entry in self.running_games_info_list).
             if title_id not in self.game_time_cache:
@@ -530,8 +530,8 @@ class RockstarPlugin(Plugin):
                     'time_played': None,
                     'last_played': None
                 }
-            return GameTime(game_id, self.game_time_cache[title_id]['time_played'],
-                            self.game_time_cache[title_id]['last_played'])
+            return GameTime(game_id=game_id, time_played=self.game_time_cache[title_id]['time_played'],
+                            last_played_time=self.game_time_cache[title_id]['last_played'])
 
     def game_times_import_complete(self):
         log.debug("ROCKSTAR_GAME_TIME: Pushing the cache of played game times to the persistent cache...")
@@ -544,15 +544,40 @@ class RockstarPlugin(Plugin):
                 return friend.user_name
         return None
 
+    async def prepare_user_presence_context(self, user_id_list: List[str]) -> Any:
+        if CONFIG_OPTIONS['user_presence_mode'] == 2 or CONFIG_OPTIONS['user_presence_mode'] == 3:
+            game = "gtav" if CONFIG_OPTIONS['user_presence_mode'] == 2 else "rdr2"
+            return await self._http_client.get_json_from_request_strict("https://scapi.rockstargames.com/friends/"
+                                                                        f"getFriendsWhoPlay?title={game}&platform=pc")
+        return None
+
     async def get_user_presence(self, user_id, context):
+        # For user presence settings 2 and 3, we need to verify that the specified user owns the game to get their
+        # stats.
+
         friend_name = self.get_friend_user_name_from_user_id(user_id)
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"ROCKSTAR_PRESENCE_START: Getting user presence for {friend_name} (Rockstar ID: {user_id})...")
+        if context:
+            for player in context['onlineFriends']:
+                if player['userId'] == user_id:
+                    # This user owns the specified game, so we can return this information.
+                    break
+            else:
+                # The user does not own the specified game, so we need to return their last played game.
+                return await self._http_client.get_last_played_game(friend_name)
+        if CONFIG_OPTIONS['user_presence_mode'] == 0:
+            return UserPresence(presence_state=PresenceState.Online)
+            # 0 - Disable User Presence
         switch = {
-            0: UserPresence(PresenceState.Unknown),  # 0 - Disable User Presence
-            1: await self._http_client.get_last_played_game(friend_name),  # 1 - Get Last Played Game
-            2: await self._http_client.get_gta_online_stats(user_id, friend_name),  # 2 - Get GTA Online Character Stats
-            3: await self._http_client.get_rdo_stats(user_id, friend_name)  # 3 - Get Red Dead Online Character Stats
+            1: self._http_client.get_last_played_game(friend_name),
+            # 1 - Get Last Played Game
+            2: self._http_client.get_gta_online_stats(user_id, friend_name),
+            # 2 - Get GTA Online Character Stats
+            3: self._http_client.get_rdo_stats(user_id, friend_name)
+            # 3 - Get Red Dead Online Character Stats
         }
-        return switch[CONFIG_OPTIONS['user_presence_mode']]
+        return await asyncio.create_task(switch[CONFIG_OPTIONS['user_presence_mode']])
 
     async def open_rockstar_browser(self):
         # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.

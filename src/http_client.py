@@ -391,13 +391,20 @@ class BackendClient:
                                                f"{friend_name}&maxFriends=3", headers=headers)
         await self._update_cookies_from_response(resp)
         resp_json = await resp.json()
-        last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['lastUgcTitle']
-        title_id = get_game_title_id_from_ugc_title_id(last_played_ugc + "_PC")
-        if LOG_SENSITIVE_DATA:
-            log.debug(f"{friend_name}'s Last Played Game: "
-                      f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
-        return UserPresence(PresenceState.Unknown, full_status=f"Last Played Game: "
-                            f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+        try:
+            last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['lastUgcTitle']
+            title_id = get_game_title_id_from_ugc_title_id(last_played_ugc + "_PC")
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"{friend_name}'s Last Played Game: "
+                          f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+            return UserPresence(PresenceState.Online, full_status=f"Last Played Game: "
+                                f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+        except KeyError:
+            # If the lastUgcTitle key is not found in the JSON, then the user has not played any games. In this case, we
+            # cannot be certain of their presence status.
+            if LOG_SENSITIVE_DATA:
+                log.warning(f"ROCKSTAR_LAST_PLAYED_WARNING: The user {friend_name} has not played any games!")
+            return UserPresence(PresenceState.Online)
 
     async def get_gta_online_stats(self, user_id, friend_name):
         class GTAOnlineStatParser(HTMLParser):
@@ -406,15 +413,24 @@ class BackendClient:
             rank_internal_pos = None
 
             def handle_starttag(self, tag, attrs):
-                if not self.rank_internal_pos and tag == "div" and ('class', 'rankHex right-grad') in \
-                        attrs:
-                    self.rank_internal_pos = self.getpos()
+                if not self.rank_internal_pos and tag == "div" and len(attrs) > 0:
+                    class_, name = attrs[0]
+                    if not re.search(r"^rankHex right-grad .*", name):
+                        return
+                    self.rank_internal_pos = self.getpos()[0]
 
             def handle_data(self, data):
-                if self.getpos() == (self.rank_internal_pos + 1):
+                if not self.rank_internal_pos:
+                    return
+                if not self.char_rank and self.getpos()[0] == (self.rank_internal_pos + 1):
                     self.char_rank = data
-                elif self.getpos() == (self.rank_internal_pos + 2):
-                    self.char_title = data
+                elif not self.char_title and self.getpos()[0] == (self.rank_internal_pos + 2):
+                    # There is a bug in the Social Club API where a user who is past rank 105 no longer has their title
+                    # shown. However, they are still a "Kingpin."
+                    if int(self.char_rank) >= 105:
+                        self.char_title = "Kingpin"
+                    else:
+                        self.char_title = data
 
             def get_stats(self):
                 return self.char_rank, self.char_title
@@ -430,8 +446,18 @@ class BackendClient:
                 "https://socialclub.rockstargames.com/games"),
             'User-Agent': USER_AGENT
         }
-        resp = await self._current_session.get(url, headers=headers)
-        await self._update_cookies_from_response(resp)
+        while True:
+            try:
+                resp = await self._current_session.get(url, headers=headers)
+                await self._update_cookies_from_response(resp)
+                break
+            except aiohttp.ClientResponseError as e:
+                if e.status == 429:
+                    await asyncio.sleep(5)
+                else:
+                    raise e
+            except Exception:
+                raise
         resp_text = await resp.text()
         parser = GTAOnlineStatParser()
         parser.feed(resp_text)
@@ -439,7 +465,7 @@ class BackendClient:
         parser.close()
         if rank and title:
             log.debug(f"ROCKSTAR_GTA_ONLINE_STATS: [{friend_name}] Grand Theft Auto Online: Rank {rank} {title}")
-            return UserPresence(PresenceState.Unknown, full_status=f"Grand Theft Auto Online: Rank {rank} {title}")
+            return UserPresence(PresenceState.Online, full_status=f"Grand Theft Auto Online: Rank {rank} {title}")
         else:
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_GTA_ONLINE_STATS_MISSING: {friend_name} (Rockstar ID: {user_id}) does not have "
@@ -455,14 +481,18 @@ class BackendClient:
         resp = await self._current_session.get("https://scapi.rockstargames.com/games/rdo/navigationData?platform=pc&"
                                                f"rockstarId={user_id}", headers=headers)
         await self._update_cookies_from_response(resp)
-        resp_json = await resp.json
-        if str(resp_json['status']) == 'false':
+        resp_json = await resp.json()
+        try:
+            char_name = resp_json['result']['onlineCharacterName']
+            char_rank = resp_json['result']['onlineCharacterRank']
+        except KeyError:
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS_MISSING: {friend_name} (Rockstar ID: {user_id}) does not "
                           f"have any character stats for Red Dead Online. Returning default user presence...")
             return await self.get_last_played_game(friend_name)
-        char_name = resp_json['result']['onlineCharacterName']
-        char_rank = resp_json['result']['onlineCharacterRank']
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS_PARTIAL: {friend_name} (Rockstar ID: {user_id}) has a character "
+                      f"named {char_name}, who is at rank {str(char_rank)}.")
 
         # As an added bonus, we will find the user's preferred role (bounty hunter, collector, or trader). This is
         # determined by the acquired rank in each role.
@@ -500,8 +530,8 @@ class BackendClient:
         if LOG_SENSITIVE_DATA:
             log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS: [{friend_name}] Red Dead Online: {char_name} - Rank {char_rank}"
                       f" {highest_rank}")
-        return UserPresence(PresenceState.Unknown, full_status=(f"Red Dead Online: {char_name} - Rank {char_rank} "
-                                                                f"{highest_rank}"))
+        return UserPresence(PresenceState.Online, full_status=(f"Red Dead Online: {char_name} - Rank {char_rank} "
+                                                               f"{highest_rank}"))
 
     def _get_rsso_cookie(self) -> (str, str):
         for morsel in self._current_session.cookie_jar.__iter__():
