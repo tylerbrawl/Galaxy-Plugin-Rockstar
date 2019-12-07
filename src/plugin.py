@@ -59,6 +59,7 @@ class RockstarPlugin(Plugin):
         self.total_games_cache = self.create_total_games_cache()
         self._all_achievements_cache = {}
         self.friends_cache = []
+        self.presence_cache = {}
         self.owned_games_cache = []
         self.last_online_game_check = time() - 300
         self.local_games_cache = {}
@@ -567,17 +568,19 @@ class RockstarPlugin(Plugin):
                 # The user does not own the specified game, so we need to return their last played game.
                 return await self._http_client.get_last_played_game(friend_name)
         if CONFIG_OPTIONS['user_presence_mode'] == 0:
-            return UserPresence(presence_state=PresenceState.Online)
+            self.presence_cache[user_id] = UserPresence(presence_state=PresenceState.Online)
             # 0 - Disable User Presence
-        switch = {
-            1: self._http_client.get_last_played_game(friend_name),
-            # 1 - Get Last Played Game
-            2: self._http_client.get_gta_online_stats(user_id, friend_name),
-            # 2 - Get GTA Online Character Stats
-            3: self._http_client.get_rdo_stats(user_id, friend_name)
-            # 3 - Get Red Dead Online Character Stats
-        }
-        return await asyncio.create_task(switch[CONFIG_OPTIONS['user_presence_mode']])
+        else:
+            switch = {
+                1: self._http_client.get_last_played_game(friend_name),
+                # 1 - Get Last Played Game
+                2: self._http_client.get_gta_online_stats(user_id, friend_name),
+                # 2 - Get GTA Online Character Stats
+                3: self._http_client.get_rdo_stats(user_id, friend_name)
+                # 3 - Get Red Dead Online Character Stats
+            }
+            self.presence_cache[user_id] = await asyncio.create_task(switch[CONFIG_OPTIONS['user_presence_mode']])
+        return self.presence_cache[user_id]
 
     async def open_rockstar_browser(self):
         # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.
