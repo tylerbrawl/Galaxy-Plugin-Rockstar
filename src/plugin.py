@@ -568,7 +568,7 @@ class RockstarPlugin(Plugin):
                 # The user does not own the specified game, so we need to return their last played game.
                 return await self._http_client.get_last_played_game(friend_name)
         if CONFIG_OPTIONS['user_presence_mode'] == 0:
-            self.presence_cache[user_id] = UserPresence(presence_state=PresenceState.Online)
+            self.presence_cache[user_id] = UserPresence(presence_state=PresenceState.Unknown)
             # 0 - Disable User Presence
         else:
             switch = {

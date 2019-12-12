@@ -398,9 +398,8 @@ class BackendClient:
                 log.debug(f"{friend_name}'s Last Played Game: "
                           f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
             return UserPresence(PresenceState.Online,
-                                game_title="Last Played Game",
-                                in_game_status=
-                                f"{games_cache[title_id]['friendlyName'] if title_id else last_played_ugc}")
+                                game_id=str(games_cache[title_id]['rosTitleId']) if title_id else last_played_ugc,
+                                in_game_status="Last Played Game")
         except KeyError:
             # If the lastUgcTitle key is not found in the JSON, then the user has not played any games. In this case, we
             # cannot be certain of their presence status.
@@ -468,8 +467,8 @@ class BackendClient:
         if rank and title:
             log.debug(f"ROCKSTAR_GTA_ONLINE_STATS: [{friend_name}] Grand Theft Auto Online: Rank {rank} {title}")
             return UserPresence(PresenceState.Online,
-                                game_title="Grand Theft Auto Online",
-                                in_game_status=f"Rank {rank} {title}")
+                                game_id="11",
+                                in_game_status=f"Grand Theft Auto Online: Rank {rank} {title}")
         else:
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_GTA_ONLINE_STATS_MISSING: {friend_name} (Rockstar ID: {user_id}) does not have "
@@ -535,8 +534,8 @@ class BackendClient:
             log.debug(f"ROCKSTAR_RED_DEAD_ONLINE_STATS: [{friend_name}] Red Dead Online: {char_name} - Rank {char_rank}"
                       f" {highest_rank}")
         return UserPresence(PresenceState.Online,
-                            game_title="Red Dead Online",
-                            in_game_status=f"{char_name} - Rank {char_rank} {highest_rank}")
+                            game_id="13",
+                            in_game_status=f"Red Dead Online: {char_name} - Rank {char_rank} {highest_rank}")
 
     def _get_rsso_cookie(self) -> (str, str):
         for morsel in self._current_session.cookie_jar.__iter__():
