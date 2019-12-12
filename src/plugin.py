@@ -341,7 +341,7 @@ class RockstarPlugin(Plugin):
     async def _parse_friends(self, friends_list: dict) -> List[UserInfo]:
         return_list = []
         for i in range(0, len(friends_list)):
-            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"
+            avatar_uri = f"https://a.rsg.sc/n/{friends_list[i]['displayName'].lower()}/l"
             profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
             friend = UserInfo(user_id=str(friends_list[i]['rockstarId']),
                               user_name=friends_list[i]['displayName'],
