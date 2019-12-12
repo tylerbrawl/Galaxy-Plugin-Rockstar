@@ -1,10 +1,11 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
 from galaxy.api.consts import Platform
-from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, FriendInfo, Achievement, \
+from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, UserInfo, Achievement, \
     GameTime
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, NetworkError, UnknownError
 
 from file_read_backwards import FileReadBackwards
+from typing import List
 import asyncio
 import dataclasses
 import datetime
@@ -77,7 +78,7 @@ class RockstarPlugin(Plugin):
 
     @staticmethod
     def loads_js(file):
-        with open(os.path.join(__file__, '..', 'js', file), 'r') as f:
+        with open(os.path.abspath(os.path.join(__file__, '..', 'js', file)), 'r') as f:
             return f.read()
 
     def handshake_complete(self):
@@ -150,7 +151,7 @@ class RockstarPlugin(Plugin):
             except Exception as e:
                 log.error("ROCKSTAR_AUTH_FAILURE: Something went terribly wrong with the re-authentication. " + repr(e))
                 log.exception("ROCKSTAR_STACK_TRACE")
-                raise InvalidCredentials()
+                raise InvalidCredentials
 
     async def pass_login_credentials(self, step, credentials, cookies):
         log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
@@ -281,8 +282,7 @@ class RockstarPlugin(Plugin):
         second = int(date[17:19])
         return int(datetime.datetime(year, month, day, hour, minute, second).timestamp())
 
-    async def get_friends(self):
-        # NOTE: This will return a list of type FriendInfo.
+    async def get_friends(self) -> List[UserInfo]:
         # The Social Club website returns a list of the current user's friends through the url
         # https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&pageIndex=0&pageSize=30.
         # The nickname URL parameter is left blank because the website instead uses the bearer token to get the correct
@@ -309,21 +309,7 @@ class RockstarPlugin(Plugin):
 
         # Now, we need to get the information about the friends.
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return_list = []
-        for i in range(0, len(friends_list)):
-            friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
-            return_list.append(friend)
-            for cached_friend in self.friends_cache:
-                if cached_friend.user_id == friend.user_id:
-                    break
-            else:
-                self.friends_cache.append(friend)
-                self.add_friend(friend)
-            if LOG_SENSITIVE_DATA:
-                log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
-                          str(friend.user_id) + ")")
-            else:
-                log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
+        return_list = [friend for friend in await self._parse_friends(friends_list)]
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
@@ -331,22 +317,31 @@ class RockstarPlugin(Plugin):
                 try:
                     url = ("https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&"
                            "pageIndex=" + str(i) + "&pageSize=30")
-                    return_list.append(friend for friend in await self._get_friends(url))
+                    for friend in await self._get_friends(url):
+                        return_list.append(friend)
                 except TimeoutError:
                     log.warning(f"ROCKSTAR_FRIENDS_TIMEOUT: The request to get the user's friends at page index {i} "
                                 f"timed out. Returning the cached list...")
                     return self.friends_cache
         return return_list
 
-    async def _get_friends(self, url):
+    async def _get_friends(self, url) -> List[UserInfo]:
         try:
             current_page = await self._http_client.get_json_from_request_strict(url)
         except TimeoutError:
             raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
+        return [friend for friend in await self._parse_friends(friends_list)]
+
+    async def _parse_friends(self, friends_list: dict) -> List[UserInfo]:
         return_list = []
         for i in range(0, len(friends_list)):
-            friend = FriendInfo(friends_list[i]['rockstarId'], friends_list[i]['displayName'])
+            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"
+            profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
+            friend = UserInfo(friends_list[i]['rockstarId'],
+                              friends_list[i]['displayName'],
+                              avatar_url=avatar_uri,
+                              profile_url=profile_uri)
             return_list.append(friend)
             for cached_friend in self.friends_cache:
                 if cached_friend.user_id == friend.user_id:
@@ -435,7 +430,7 @@ class RockstarPlugin(Plugin):
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
         owned_title_ids_ = owned_title_ids
         checked_games_count = 0
-        total_games_count = len(games_cache)
+        total_games_count = len(games_cache) - 1  # We need to subtract 1 to account for the Launcher.
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
                 while checked_games_count < total_games_count:
@@ -608,6 +603,14 @@ class RockstarPlugin(Plugin):
             pid = await self._local_client.launch_game_from_title_id("launcher")
             if not pid:
                 log.warning("ROCKSTAR_LAUNCHER_FAILED: The Rockstar Games Launcher could not be launched!")
+
+    if IS_WINDOWS:
+        async def shutdown_platform_client(self):
+            if not self._local_client.get_local_launcher_path():
+                await self.open_rockstar_browser()
+                return
+
+            await self._local_client.kill_launcher()
 
     if IS_WINDOWS:
         async def launch_game(self, game_id):

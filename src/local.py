@@ -1,4 +1,3 @@
-import os
 from winreg import *
 import logging as log
 import subprocess
@@ -23,7 +22,6 @@ class LocalClient:
     def __init__(self):
         self.root_reg = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
         self.installer_location = None
-        self.FNULL = open(os.devnull, 'w')
         self.get_local_launcher_path()
 
     def get_local_launcher_path(self):
@@ -40,6 +38,10 @@ class LocalClient:
             self.installer_location = None
         return self.installer_location
 
+    async def kill_launcher(self):
+        # The Launcher exits without displaying an error message if LauncherPatcher.exe is killed before Launcher.exe.
+        subprocess.Popen("taskkill /im SocialClubHelper.exe")
+
     def get_path_to_game(self, title_id):
         try:
             key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + games_cache[title_id]['guid'])
@@ -50,40 +52,39 @@ class LocalClient:
             # Console Spam (Enable this if you need to.)
             return None
 
-    def does_exe_exist(self, exe_name):
-        tasklist_output = subprocess.Popen(f'tasklist /FI "IMAGENAME eq {exe_name}"', stdout=subprocess.PIPE)
-        for line in tasklist_output.stdout:
-            new_line = line.decode(locale.getpreferredencoding())
-            return new_line != 'INFO: No tasks are running which match the specified criteria.'
-
     async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
         find_actual_pid = subprocess.Popen(
             f'tasklist /FI "IMAGENAME eq {games_cache[title_id]["launchEXE"]} " /FI "STATUS eq running" /FO LIST',
-            stdout=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, err = find_actual_pid.communicate()
 
-        for line in find_actual_pid.stdout:
-            new_line = line.decode(locale.getpreferredencoding())
-            if "PID" in new_line:
-                pid = [str(s) for s in new_line.split() if s.isdigit()][0]
+        for line in output.decode(locale.getpreferredencoding()).splitlines():
+            if "PID" in line:
+                pid = [str(s) for s in line.split() if s.isdigit()][0]
                 break
         return pid
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
-        path = path[:path.rindex('"')] if '"' in path else path
+        path = path.replace('"', '')  # path = path[:path.rindex('"')] if '"' in path else path
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.call(f'{game_path} -launchTitleInFolder "{path}" @commandline.txt', stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, shell=False)
         launcher_pid = None
+        retries = 120
         while not launcher_pid:
             await asyncio.sleep(1)
             launcher_pid = await self.game_pid_from_tasklist("launcher")
-        log.debug(f"ROCKSTAR_LAUNCHER_PATCHER_PID: {launcher_pid}")
+            retries -= 1
+            if retries == 0:
+                log.debug("ROCKSTAR_LAUNCHER_PID_FAILURE: The Rockstar Games Launcher took too long to launch!")
+                return None
+        log.debug(f"ROCKSTAR_LAUNCHER_PID: {launcher_pid}")
 
         # The Rockstar Games Launcher can be painfully slow to boot up games, loop will be just fine
         retries = 30
@@ -97,7 +98,7 @@ class LocalClient:
                 # If it has been this long and the game still has not launched, then it might be downloading an update.
                 # We should refresh the retries counter if the Rockstar Games Launcher is still running; otherwise, we
                 # return None.
-                if self.does_exe_exist("Launcher.exe"):
+                if await self.game_pid_from_tasklist("launcher"):
                     log.debug(f"ROCKSTAR_LAUNCH_WAITING: The game {title_id} has not launched yet, but the Rockstar "
                               f"Games Launcher is still running. Restarting the loop...")
                     retries += 30
@@ -107,11 +108,11 @@ class LocalClient:
     def install_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.call(self.installer_location + " -enableFullMode -install=" + title_id, stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.call(self.installer_location + " -enableFullMode -install=" + title_id, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, shell=False)
 
     def uninstall_game_from_title_id(self, title_id):
         if not self.installer_location:
             return
-        subprocess.call(self.installer_location + " -enableFullMode -uninstall=" + title_id, stdout=self.FNULL,
-                        stderr=self.FNULL, shell=False)
+        subprocess.call(self.installer_location + " -enableFullMode -uninstall=" + title_id, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, shell=False)
