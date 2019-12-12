@@ -387,10 +387,14 @@ class BackendClient:
             "User-Agent": USER_AGENT,
             "X-Requested-With": "XMLHttpRequest"
         }
-        resp = await self._current_session.get("https://scapi.rockstargames.com/profile/getprofile?nickname="
-                                               f"{friend_name}&maxFriends=3", headers=headers)
-        await self._update_cookies_from_response(resp)
-        resp_json = await resp.json()
+        try:
+            resp = await self._current_session.get("https://scapi.rockstargames.com/profile/getprofile?nickname="
+                                                   f"{friend_name}&maxFriends=3", headers=headers)
+            await self._update_cookies_from_response(resp)
+            resp_json = await resp.json()
+        except AssertionError:
+            await self._refresh_credentials_social_club_light()
+            return await self.get_last_played_game(friend_name)
         try:
             last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['lastUgcTitle']
             title_id = get_game_title_id_from_ugc_title_id(last_played_ugc + "_PC")
@@ -481,10 +485,14 @@ class BackendClient:
             'User-Agent': USER_AGENT,
             'X-Requested-With': 'XMLHttpRequest'
         }
-        resp = await self._current_session.get("https://scapi.rockstargames.com/games/rdo/navigationData?platform=pc&"
-                                               f"rockstarId={user_id}", headers=headers)
-        await self._update_cookies_from_response(resp)
-        resp_json = await resp.json()
+        try:
+            resp = await self._current_session.get("https://scapi.rockstargames.com/games/rdo/navigationData?platform=pc&"
+                                                   f"rockstarId={user_id}", headers=headers)
+            await self._update_cookies_from_response(resp)
+            resp_json = await resp.json()
+        except AssertionError:
+            await self._refresh_credentials_social_club_light()
+            return await self.get_rdo_stats(user_id, friend_name)
         try:
             char_name = resp_json['result']['onlineCharacterName']
             char_rank = resp_json['result']['onlineCharacterRank']
