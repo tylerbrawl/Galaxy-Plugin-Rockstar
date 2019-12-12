@@ -1,8 +1,25 @@
 import sys
 
+from galaxyutils.config_parser import Option, get_config_options
+
+
+class NoLogFoundException(Exception):
+    pass
+
+
+class NoGamesInLogException(Exception):
+    pass
+
+
 ARE_ACHIEVEMENTS_IMPLEMENTED = False
 
-LOG_SENSITIVE_DATA = False
+CONFIG_OPTIONS = get_config_options([
+    Option(option_name='user_presence_mode', default_value=0, allowed_values=[i for i in range(0, 4)]),
+    Option(option_name='log_sensitive_data'),
+    Option(option_name='debug_always_refresh')
+])
+
+LOG_SENSITIVE_DATA = CONFIG_OPTIONS['log_sensitive_data']
 
 MANIFEST_URL = r"https://gamedownloads-rockstargames-com.akamaized.net/public/title_metadata.json"
 
@@ -21,13 +38,6 @@ AUTH_PARAMS = {
     "window_width": 700,
     "window_height": 600,
     "start_uri": "https://www.rockstargames.com/auth/scauth-login",
-    "end_uri_regex": r"https://www.rockstargames.com/auth/get-user.json.*"
+    "end_uri_regex": r"https://scapi.rockstargames.com/profile/getbasicprofile"
+                    # r"https://www.rockstargames.com/auth/get-user.json.*"
 }
-
-
-class NoLogFoundException(Exception):
-    pass
-
-
-class NoGamesInLogException(Exception):
-    pass

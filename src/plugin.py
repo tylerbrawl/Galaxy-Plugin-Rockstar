@@ -1,11 +1,12 @@
 from galaxy.api.plugin import Plugin, create_and_run_plugin
-from galaxy.api.consts import Platform
+from galaxy.api.consts import Platform, PresenceState
 from galaxy.api.types import NextStep, Authentication, Game, LocalGame, LocalGameState, UserInfo, Achievement, \
-    GameTime
+    GameTime, UserPresence
 from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, NetworkError, UnknownError
 
 from file_read_backwards import FileReadBackwards
-from typing import List
+from time import time
+from typing import List, Any
 import asyncio
 import dataclasses
 import datetime
@@ -17,9 +18,8 @@ import sys
 import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
-    ARE_ACHIEVEMENTS_IMPLEMENTED
-from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_game_title_id_from_online_title_id, \
-    get_achievement_id_from_ros_title_id
+    ARE_ACHIEVEMENTS_IMPLEMENTED, CONFIG_OPTIONS
+from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id
 from http_client import BackendClient
 from version import __version__
 
@@ -59,7 +59,9 @@ class RockstarPlugin(Plugin):
         self.total_games_cache = self.create_total_games_cache()
         self._all_achievements_cache = {}
         self.friends_cache = []
+        self.presence_cache = {}
         self.owned_games_cache = []
+        self.last_online_game_check = time() - 300
         self.local_games_cache = {}
         self.game_time_cache = {}
         self.running_games_info_list = {}
@@ -133,6 +135,7 @@ class RockstarPlugin(Plugin):
             # for cookie in cookies:
             #   self._http_client.update_cookies({cookie.name: cookie.value})
             self._http_client.set_current_auth_token(stored_credentials['current_auth_token'])
+            self._http_client.set_current_sc_token(stored_credentials['current_sc_token'])
             self._http_client.set_refresh_token_absolute(
                 pickle.loads(bytes.fromhex(stored_credentials['refresh_token'])))
             self._http_client.set_fingerprint(stored_credentials['fingerprint'])
@@ -158,6 +161,8 @@ class RockstarPlugin(Plugin):
         for cookie in cookies:
             if cookie['name'] == "ScAuthTokenData":
                 self._http_client.set_current_auth_token(cookie['value'])
+            if cookie['name'] == "BearerToken":
+                self._http_client.set_current_sc_token(cookie['value'])
             if cookie['name'] == "RMT":
                 if cookie['value'] != "":
                     if LOG_SENSITIVE_DATA:
@@ -197,7 +202,7 @@ class RockstarPlugin(Plugin):
             user = await self._http_client.authenticate()
         except Exception as e:
             log.error(repr(e))
-            raise InvalidCredentials()
+            raise InvalidCredentials
         return Authentication(user_id=user["rockstar_id"], user_name=user["display_name"])
 
     async def shutdown(self):
@@ -309,7 +314,7 @@ class RockstarPlugin(Plugin):
 
         # Now, we need to get the information about the friends.
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return_list = [friend for friend in await self._parse_friends(friends_list)]
+        return_list = await self._parse_friends(friends_list)
 
         # The first page is finished, but now we need to work on any remaining pages.
         if num_pages_required > 0:
@@ -325,21 +330,21 @@ class RockstarPlugin(Plugin):
                     return self.friends_cache
         return return_list
 
-    async def _get_friends(self, url) -> List[UserInfo]:
+    async def _get_friends(self, url: str) -> List[UserInfo]:
         try:
             current_page = await self._http_client.get_json_from_request_strict(url)
         except TimeoutError:
             raise
         friends_list = current_page['rockstarAccountList']['rockstarAccounts']
-        return [friend for friend in await self._parse_friends(friends_list)]
+        return await self._parse_friends(friends_list)
 
     async def _parse_friends(self, friends_list: dict) -> List[UserInfo]:
         return_list = []
         for i in range(0, len(friends_list)):
-            avatar_uri = f"https://a.rsg.sc//n/{friends_list[i]['displayName'].lower()}/l"
+            avatar_uri = f"https://a.rsg.sc/n/{friends_list[i]['displayName'].lower()}/l"
             profile_uri = f"https://socialclub.rockstargames.com/member/{friends_list[i]['displayName']}/"
-            friend = UserInfo(friends_list[i]['rockstarId'],
-                              friends_list[i]['displayName'],
+            friend = UserInfo(user_id=str(friends_list[i]['rockstarId']),
+                              user_name=friends_list[i]['displayName'],
                               avatar_url=avatar_uri,
                               profile_url=profile_uri)
             return_list.append(friend)
@@ -348,7 +353,6 @@ class RockstarPlugin(Plugin):
                     break
             else:  # An else-statement occurs after a for-statement if the latter finishes WITHOUT breaking.
                 self.friends_cache.append(friend)
-                self.add_friend(friend)
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_FRIEND: Found " + friend.user_name + " (Rockstar ID: " +
                           str(friend.user_id) + ")")
@@ -368,16 +372,23 @@ class RockstarPlugin(Plugin):
         # Get the list of games_played from https://www.rockstargames.com/auth/get-user.json.
         owned_title_ids = []
         online_check_success = True
-        try:
-            played_games = await self._http_client.get_played_games()
-            for game in played_games:
-                title_id = get_game_title_id_from_online_title_id(game)
-                owned_title_ids.append(title_id)
-                log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + title_id + "!")
-        except Exception as e:
-            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get the"
-                      " user's played games online. Falling back to log file check...")
-            online_check_success = False
+        # The Social Club prevents the user from making too many requests in a given time span to prevent a denial of
+        # service attack. As such, we need to limit online checking to every 5 minutes. For Windows devices, log file
+        # checks will still occur every minute, but for other users, checking games only happens every 5 minutes.
+        if not self.last_online_game_check or time() >= self.last_online_game_check + 300:
+            self.last_online_game_check = time()
+            try:
+                played_games = await self._http_client.get_played_games()
+                for game in played_games:
+                    owned_title_ids.append(game)
+                    log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + game + "!")
+            except Exception as e:
+                log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get"
+                          " the user's played games online. Falling back to log file check...")
+                online_check_success = False
+        elif IS_WINDOWS:
+            log.debug("ROCKSTAR_SC_ONLINE_GAMES_SKIP: No attempt has been made to scrape the user's games from the "
+                      "Social Club, as it has not been 5 minutes since the last check.")
 
         # The log is in the Documents folder.
         current_log_count = 0
@@ -505,14 +516,14 @@ class RockstarPlugin(Plugin):
                 total_time_played = self.game_time_cache[title_id]['time_played'] + minutes_passed
                 self.game_time_cache[title_id]['time_played'] = total_time_played
                 self.game_time_cache[title_id]['last_played'] = current_time
-                return GameTime(game_id, int(total_time_played), int(current_time))
+                return GameTime(game_id=game_id, time_played=int(total_time_played), last_played_time=int(current_time))
             else:
                 # The game has not been played before, so a new entry in the game_time_cache dictionary must be made.
                 self.game_time_cache[title_id] = {
                     'time_played': minutes_passed,
                     'last_played': current_time
                 }
-                return GameTime(game_id, int(minutes_passed), int(current_time))
+                return GameTime(game_id=game_id, time_played=int(minutes_passed), last_played_time=int(current_time))
         else:
             # The game is no longer running (and there is no relevant entry in self.running_games_info_list).
             if title_id not in self.game_time_cache:
@@ -520,13 +531,56 @@ class RockstarPlugin(Plugin):
                     'time_played': None,
                     'last_played': None
                 }
-            return GameTime(game_id, self.game_time_cache[title_id]['time_played'],
-                            self.game_time_cache[title_id]['last_played'])
+            return GameTime(game_id=game_id, time_played=self.game_time_cache[title_id]['time_played'],
+                            last_played_time=self.game_time_cache[title_id]['last_played'])
 
     def game_times_import_complete(self):
         log.debug("ROCKSTAR_GAME_TIME: Pushing the cache of played game times to the persistent cache...")
         self.persistent_cache['game_time_cache'] = pickle.dumps(self.game_time_cache).hex()
         self.push_cache()
+
+    def get_friend_user_name_from_user_id(self, user_id):
+        for friend in self.friends_cache:
+            if friend.user_id == user_id:
+                return friend.user_name
+        return None
+
+    async def prepare_user_presence_context(self, user_id_list: List[str]) -> Any:
+        if CONFIG_OPTIONS['user_presence_mode'] == 2 or CONFIG_OPTIONS['user_presence_mode'] == 3:
+            game = "gtav" if CONFIG_OPTIONS['user_presence_mode'] == 2 else "rdr2"
+            return await self._http_client.get_json_from_request_strict("https://scapi.rockstargames.com/friends/"
+                                                                        f"getFriendsWhoPlay?title={game}&platform=pc")
+        return None
+
+    async def get_user_presence(self, user_id, context):
+        # For user presence settings 2 and 3, we need to verify that the specified user owns the game to get their
+        # stats.
+
+        friend_name = self.get_friend_user_name_from_user_id(user_id)
+        if LOG_SENSITIVE_DATA:
+            log.debug(f"ROCKSTAR_PRESENCE_START: Getting user presence for {friend_name} (Rockstar ID: {user_id})...")
+        if context:
+            for player in context['onlineFriends']:
+                if player['userId'] == user_id:
+                    # This user owns the specified game, so we can return this information.
+                    break
+            else:
+                # The user does not own the specified game, so we need to return their last played game.
+                return await self._http_client.get_last_played_game(friend_name)
+        if CONFIG_OPTIONS['user_presence_mode'] == 0:
+            self.presence_cache[user_id] = UserPresence(presence_state=PresenceState.Unknown)
+            # 0 - Disable User Presence
+        else:
+            switch = {
+                1: self._http_client.get_last_played_game(friend_name),
+                # 1 - Get Last Played Game
+                2: self._http_client.get_gta_online_stats(user_id, friend_name),
+                # 2 - Get GTA Online Character Stats
+                3: self._http_client.get_rdo_stats(user_id, friend_name)
+                # 3 - Get Red Dead Online Character Stats
+            }
+            self.presence_cache[user_id] = await asyncio.create_task(switch[CONFIG_OPTIONS['user_presence_mode']])
+        return self.presence_cache[user_id]
 
     async def open_rockstar_browser(self):
         # This method allows the user to install the Rockstar Games Launcher, if it is not already installed.
@@ -571,7 +625,7 @@ class RockstarPlugin(Plugin):
     async def check_for_new_games(self):
         self.checking_for_new_games = True
         await self.get_owned_games()
-        await asyncio.sleep(60)
+        await asyncio.sleep(60 if IS_WINDOWS else 300)
         self.checking_for_new_games = False
 
     async def check_game_statuses(self):
