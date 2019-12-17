@@ -360,35 +360,32 @@ class RockstarPlugin(Plugin):
                 log.debug(f"ROCKSTAR_FRIEND: Found {friend.user_name[:1]}*** (Rockstar ID: ***)")
         return return_list
 
-    async def get_owned_games(self):
+    async def get_owned_games_online(self):
+        # Get the list of games_played from https://socialclub.rockstargames.com/ajax/getGoogleTagManagerSetupData.
+        owned_title_ids = []
+        online_check_success = True
+        self.last_online_game_check = time()
+        try:
+            played_games = await self._http_client.get_played_games()
+            for game in played_games:
+                owned_title_ids.append(game)
+                log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + game + "!")
+        except Exception as e:
+            log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get"
+                      " the user's played games online. Falling back to log file check...")
+            online_check_success = False
+        return owned_title_ids, online_check_success
+
+    async def get_owned_games(self, owned_title_ids=None, online_check_success=False):
         # Here is the actual implementation of getting the user's owned games:
         # -Get the list of games_played from rockstargames.com/auth/get-user.json.
         #   -If possible, use the launcher log to confirm which games are actual launcher games and which are
         #   Steam/Retail games.
         #   -If it is not possible to use the launcher log, then just use the list provided by the website.
+        if owned_title_ids is None:
+            owned_title_ids = []
         if not self.is_authenticated():
             raise AuthenticationRequired()
-
-        # Get the list of games_played from https://www.rockstargames.com/auth/get-user.json.
-        owned_title_ids = []
-        online_check_success = True
-        # The Social Club prevents the user from making too many requests in a given time span to prevent a denial of
-        # service attack. As such, we need to limit online checking to every 5 minutes. For Windows devices, log file
-        # checks will still occur every minute, but for other users, checking games only happens every 5 minutes.
-        if not self.last_online_game_check or time() >= self.last_online_game_check + 300:
-            self.last_online_game_check = time()
-            try:
-                played_games = await self._http_client.get_played_games()
-                for game in played_games:
-                    owned_title_ids.append(game)
-                    log.debug("ROCKSTAR_ONLINE_GAME: Found played game " + game + "!")
-            except Exception as e:
-                log.error("ROCKSTAR_PLAYED_GAMES_ERROR: The exception " + repr(e) + " was thrown when attempting to get"
-                          " the user's played games online. Falling back to log file check...")
-                online_check_success = False
-        elif IS_WINDOWS:
-            log.debug("ROCKSTAR_SC_ONLINE_GAMES_SKIP: No attempt has been made to scrape the user's games from the "
-                      "Social Club, as it has not been 5 minutes since the last check.")
 
         # The log is in the Documents folder.
         current_log_count = 0
@@ -624,7 +621,17 @@ class RockstarPlugin(Plugin):
 
     async def check_for_new_games(self):
         self.checking_for_new_games = True
-        await self.get_owned_games()
+        # The Social Club prevents the user from making too many requests in a given time span to prevent a denial of
+        # service attack. As such, we need to limit online checking to every 5 minutes. For Windows devices, log file
+        # checks will still occur every minute, but for other users, checking games only happens every 5 minutes.
+        owned_title_ids = None
+        online_check_success = False
+        if not self.last_online_game_check or time() >= self.last_online_game_check + 300:
+            owned_title_ids, online_check_success = await self.get_owned_games_online()
+        elif IS_WINDOWS:
+            log.debug("ROCKSTAR_SC_ONLINE_GAMES_SKIP: No attempt has been made to scrape the user's games from the "
+                      "Social Club, as it has not been 5 minutes since the last check.")
+        await self.get_owned_games(owned_title_ids, online_check_success)
         await asyncio.sleep(60 if IS_WINDOWS else 300)
         self.checking_for_new_games = False
 
