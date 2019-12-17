@@ -39,5 +39,4 @@ AUTH_PARAMS = {
     "window_height": 600,
     "start_uri": "https://www.rockstargames.com/auth/scauth-login",
     "end_uri_regex": r"https://scapi.rockstargames.com/profile/getbasicprofile"
-                    # r"https://www.rockstargames.com/auth/get-user.json.*"
 }
