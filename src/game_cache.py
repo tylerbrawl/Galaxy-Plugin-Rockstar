@@ -35,7 +35,7 @@ games_cache = {
         "rosTitleId": 11,
         "onlineTitleId": 241,
         "googleTagId": "GTAV_PC",
-        "launchEXE": "GTA5.exe",
+        "launchEXE": "PlayGTAV.exe",
         "achievementId": "gtav",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
         "isPreOrder": False
