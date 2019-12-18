@@ -1,4 +1,7 @@
+import datetime
 import sys
+
+from time import time
 
 from galaxyutils.config_parser import Option, get_config_options
 
@@ -40,3 +43,31 @@ AUTH_PARAMS = {
     "start_uri": "https://www.rockstargames.com/auth/scauth-login",
     "end_uri_regex": r"https://scapi.rockstargames.com/profile/getbasicprofile"
 }
+
+
+async def get_unix_epoch_time_from_date(date):
+    year = int(date[0:4])
+    month = int(date[5:7])
+    day = int(date[8:10])
+    hour = int(date[11:13])
+    minute = int(date[14:16])
+    second = int(date[17:19])
+    return int(datetime.datetime(year, month, day, hour, minute, second).timestamp())
+
+
+async def get_time_passed(old_time: int) -> str:
+    current_time = int(time())
+    difference = current_time - old_time
+    days_passed = int(difference / (3600 * 24))
+    if days_passed == 0:
+        return "Today"
+    elif days_passed >= 365:
+        years_passed = int(days_passed / 365)
+        return f"{years_passed} Years Ago" if years_passed != 1 else "1 Year Ago"
+    elif days_passed >= 30:
+        months_passed = int(days_passed / 30)
+        return f"{months_passed} Months Ago" if months_passed != 1 else "1 Month Ago"
+    elif days_passed >= 7:
+        weeks_passed = int(days_passed / 7)
+        return f"{weeks_passed} Weeks Ago" if weeks_passed != 1 else "1 Week Ago"
+    return f"{days_passed} Days Ago" if days_passed != 1 else "1 Day Ago"
