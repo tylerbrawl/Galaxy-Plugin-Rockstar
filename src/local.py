@@ -67,7 +67,7 @@ class LocalClient:
 
     async def launch_game_from_title_id(self, title_id):
         path = self.get_path_to_game(title_id)
-        path = path.replace('"', '')  # path = path[:path.rindex('"')] if '"' in path else path
+        path = path.replace('"', '').replace(',0', '')
         if not path:
             log.error(f"ROCKSTAR_LAUNCH_FAILURE: The game {title_id} could not be launched.")
             return
