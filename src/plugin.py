@@ -18,7 +18,7 @@ import sys
 import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
-    ARE_ACHIEVEMENTS_IMPLEMENTED, CONFIG_OPTIONS
+    ARE_ACHIEVEMENTS_IMPLEMENTED, CONFIG_OPTIONS, get_unix_epoch_time_from_date
 from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id
 from http_client import BackendClient
 from version import __version__
@@ -263,7 +263,7 @@ class RockstarPlugin(Plugin):
                     await self.update_achievements_cache(achievement_id)
                     all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
                 achievement_num = key
-                unlock_time = await self.get_unix_epoch_time_from_date(value["dateAchieved"])
+                unlock_time = await get_unix_epoch_time_from_date(value["dateAchieved"])
                 achievement_name = all_achievements[int(key) - 1]["name"]
                 achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
             return achievements_list
@@ -278,15 +278,7 @@ class RockstarPlugin(Plugin):
             log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
             self.push_cache()
 
-    @staticmethod
-    async def get_unix_epoch_time_from_date(date):
-        year = int(date[0:4])
-        month = int(date[5:7])
-        day = int(date[8:10])
-        hour = int(date[11:13])
-        minute = int(date[14:16])
-        second = int(date[17:19])
-        return int(datetime.datetime(year, month, day, hour, minute, second).timestamp())
+
 
     async def get_friends(self) -> List[UserInfo]:
         # The Social Club website returns a list of the current user's friends through the url
