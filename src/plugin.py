@@ -713,7 +713,6 @@ class RockstarPlugin(Plugin):
             title_id = get_game_title_id_from_ros_title_id(game_id)
             log.debug("ROCKSTAR_UNINSTALL_REQUEST: Requesting to uninstall " + title_id + "...")
             self._local_client.uninstall_game_from_title_id(title_id)
-            self.update_local_game_status(LocalGame(game_id, LocalGameState.None_))
 
     def create_game_from_title_id(self, title_id):
         return Game(str(self.games_cache[title_id]["rosTitleId"]), self.games_cache[title_id]["friendlyName"], None,
