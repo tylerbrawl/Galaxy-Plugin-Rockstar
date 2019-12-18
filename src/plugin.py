@@ -157,7 +157,8 @@ class RockstarPlugin(Plugin):
                 raise InvalidCredentials
 
     async def pass_login_credentials(self, step, credentials, cookies):
-        log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
+        if LOG_SENSITIVE_DATA:
+            log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
             if cookie['name'] == "ScAuthTokenData":
                 self._http_client.set_current_auth_token(cookie['value'])
