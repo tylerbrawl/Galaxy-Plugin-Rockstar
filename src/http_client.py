@@ -396,7 +396,8 @@ class BackendClient:
             await self._refresh_credentials_social_club_light()
             return await self.get_last_played_game(friend_name)
         try:
-            last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['lastUgcTitle']
+            # The last played game is always listed first in the ownedGames list.
+            last_played_ugc = resp_json['accounts'][0]['rockstarAccount']['gamesOwned'][0]['name']
             title_id = get_game_title_id_from_ugc_title_id(last_played_ugc + "_PC")
             if LOG_SENSITIVE_DATA:
                 log.debug(f"{friend_name}'s Last Played Game: "
@@ -404,8 +405,8 @@ class BackendClient:
             return UserPresence(PresenceState.Online,
                                 game_id=str(games_cache[title_id]['rosTitleId']) if title_id else last_played_ugc,
                                 in_game_status="Last Played Game")
-        except KeyError:
-            # If the lastUgcTitle key is not found in the JSON, then the user has not played any games. In this case, we
+        except IndexError:
+            # If a game is not found in the gamesOwned list, then the user has not played any games. In this case, we
             # cannot be certain of their presence status.
             if LOG_SENSITIVE_DATA:
                 log.warning(f"ROCKSTAR_LAST_PLAYED_WARNING: The user {friend_name} has not played any games!")
