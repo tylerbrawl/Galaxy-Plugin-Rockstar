@@ -278,8 +278,6 @@ class RockstarPlugin(Plugin):
             log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
             self.push_cache()
 
-
-
     async def get_friends(self) -> List[UserInfo]:
         # The Social Club website returns a list of the current user's friends through the url
         # https://scapi.rockstargames.com/friends/getFriendsFiltered?onlineService=sc&nickname=&pageIndex=0&pageSize=30.

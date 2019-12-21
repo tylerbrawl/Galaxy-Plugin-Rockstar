@@ -36,6 +36,8 @@ games_cache = {
         "onlineTitleId": 241,
         "googleTagId": "GTAV_PC",
         "launchEXE": "PlayGTAV.exe",
+        "trackEXE": "GTA5.exe",  # This value is for games that require the launch of multiple executables. So far,
+        # Grand Theft Auto V seems to be the only game that requires this.
         "achievementId": "gtav",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
         "isPreOrder": False
