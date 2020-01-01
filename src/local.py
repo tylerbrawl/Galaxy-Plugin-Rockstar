@@ -6,7 +6,7 @@ import locale
 
 from galaxy.proc_tools import pids
 
-from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA
+from consts import WINDOWS_UNINSTALL_KEY, LOG_SENSITIVE_DATA, CONFIG_OPTIONS
 from game_cache import games_cache
 
 
@@ -26,14 +26,21 @@ class LocalClient:
 
     def get_local_launcher_path(self):
         try:
-            # The uninstall key for the launcher is called Rockstar Games Launcher.
-            key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + "Rockstar Games Launcher")
-            dir, type = QueryValueEx(key, "InstallLocation")
-            self.installer_location = dir[:-1] + "\\Launcher.exe\""
-            if LOG_SENSITIVE_DATA:
-                log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+            if CONFIG_OPTIONS['rockstar_launcher_path_override']:
+                self.installer_location = CONFIG_OPTIONS['rockstar_launcher_path_override']
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+                else:
+                    log.debug("ROCKSTAR_INSTALLER_PATH: ***")
             else:
-                log.debug("ROCKSTAR_INSTALLER_PATH: ***")
+                # The uninstall key for the launcher is called Rockstar Games Launcher.
+                key = OpenKey(self.root_reg, WINDOWS_UNINSTALL_KEY + "Rockstar Games Launcher")
+                dir, type = QueryValueEx(key, "InstallLocation")
+                self.installer_location = dir[:-1] + "\\Launcher.exe\""
+                if LOG_SENSITIVE_DATA:
+                    log.debug("ROCKSTAR_INSTALLER_PATH: " + self.installer_location)
+                else:
+                    log.debug("ROCKSTAR_INSTALLER_PATH: ***")
         except WindowsError:
             self.installer_location = None
         return self.installer_location
