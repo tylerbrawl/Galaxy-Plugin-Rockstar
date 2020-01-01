@@ -19,7 +19,8 @@ ARE_ACHIEVEMENTS_IMPLEMENTED = False
 CONFIG_OPTIONS = get_config_options([
     Option(option_name='user_presence_mode', default_value=0, allowed_values=[i for i in range(0, 4)]),
     Option(option_name='log_sensitive_data'),
-    Option(option_name='debug_always_refresh')
+    Option(option_name='debug_always_refresh'),
+    Option(option_name='rockstar_launcher_path_override', str_option=True, default_value=None)
 ])
 
 LOG_SENSITIVE_DATA = CONFIG_OPTIONS['log_sensitive_data']
