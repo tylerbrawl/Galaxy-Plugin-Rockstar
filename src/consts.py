@@ -14,7 +14,7 @@ class NoGamesInLogException(Exception):
     pass
 
 
-ARE_ACHIEVEMENTS_IMPLEMENTED = False
+ARE_ACHIEVEMENTS_IMPLEMENTED = True
 
 CONFIG_OPTIONS = get_config_options([
     Option(option_name='user_presence_mode', default_value=0, allowed_values=[i for i in range(0, 4)]),
