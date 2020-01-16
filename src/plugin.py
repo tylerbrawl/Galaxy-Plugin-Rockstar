@@ -6,7 +6,7 @@ from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, Networ
 
 from file_read_backwards import FileReadBackwards
 from time import time
-from typing import List, Any
+from typing import List, Any, Union
 import asyncio
 import dataclasses
 import datetime
@@ -270,21 +270,41 @@ class RockstarPlugin(Plugin):
             for key, value in achievements_dict.items():
                 # What if an achievement is added to the Social Club after the cache was already made? In this event, we
                 # need to refresh the cache.
-                if int(key) > len(all_achievements):
-                    all_achievements = await self.update_achievements_cache(game_id, all_achievements)
                 achievement_num = key
                 unlock_time = await get_unix_epoch_time_from_date(value["dateAchieved"])
-                achievement_name = all_achievements[int(key) - 1]["name"]
-                achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
+                try:
+                    if all_achievements[int(key) - 1]["id"] == int(key):
+                        achievement_name = all_achievements[int(key) - 1]["name"]
+                        achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
+                    else:
+                        raise IndexError
+                except IndexError:
+                    # Some games do not follow a consistent and consecutive numerical ID pattern for their achievements
+                    # (such as Max Payne 3). For these games, we need to iterate through the list and find the correct
+                    # achievement.
+                    achievement_name = self.find_achievement_name_with_id(key, all_achievements)
+                    if achievement_name:
+                        achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
+                    else:
+                        # The achievement was never in the list to begin with, so the cache needs to be updated to
+                        # include it.
+                        all_achievements = await self.update_achievements_cache(game_id)
+                        achievement_name = self.find_achievement_name_with_id(key, all_achievements)
+                        if achievement_name:
+                            achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
             return achievements_list
 
-        async def update_achievements_cache(self, game_id: str, all_achievements: dict) -> dict:
-            new_cache = all_achievements.copy()
+        def find_achievement_name_with_id(self, key: str, all_achievements: List) -> Union[str, None]:
+            for achievement in all_achievements:
+                if achievement["id"] == int(key):
+                    return achievement["name"]
+            return None
+
+        async def update_achievements_cache(self, game_id: str) -> List:
             achievement_id = get_achievement_id_from_ros_title_id(game_id)
             url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
             new_achievements = await self._http_client.get_json_from_request_strict(url)
-            new_cache[game_id] = new_achievements["achievements"]
-            return new_cache
+            return new_achievements["achievements"]
             # all_achievements = await self._http_client.get_json_from_request_strict(url)
             # self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
             # log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
