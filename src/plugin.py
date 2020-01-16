@@ -57,7 +57,6 @@ class RockstarPlugin(Plugin):
         self._http_client = BackendClient(self.store_credentials)
         self._local_client = None
         self.total_games_cache = self.create_total_games_cache()
-        self._all_achievements_cache = {}
         self.friends_cache = []
         self.presence_cache = {}
         self.owned_games_cache = []
@@ -86,10 +85,10 @@ class RockstarPlugin(Plugin):
     def handshake_complete(self):
         game_time_cache_in_persistent_cache = False
         for key, value in self.persistent_cache.items():
-            if "achievements_" in key:
-                log.debug("ROCKSTAR_CACHE_IMPORT: Importing " + key + " from persistent cache...")
-                self._all_achievements_cache[key] = pickle.loads(bytes.fromhex(value))
-            elif key == "game_time_cache":
+            # if "achievements_" in key:
+                # log.debug("ROCKSTAR_CACHE_IMPORT: Importing " + key + " from persistent cache...")
+                # self._all_achievements_cache[key] = pickle.loads(bytes.fromhex(value))
+            if key == "game_time_cache":
                 self.game_time_cache = pickle.loads(bytes.fromhex(value))
                 game_time_cache_in_persistent_cache = True
         if IS_WINDOWS and not game_time_cache_in_persistent_cache:
@@ -230,6 +229,18 @@ class RockstarPlugin(Plugin):
         return cache
 
     if ARE_ACHIEVEMENTS_IMPLEMENTED:
+        async def prepare_achievements_context(self, game_ids: List[str]) -> Any:
+            achievements_cache = {}
+            for game_id in game_ids:
+                title_id = get_game_title_id_from_ros_title_id(game_id)
+                if not games_cache[title_id]["achievementId"]:
+                    continue
+                achievement_id = get_achievement_id_from_ros_title_id(game_id)
+                url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
+                game_achievements = await self._http_client.get_json_from_request_strict(url)
+                achievements_cache[game_id] = game_achievements["achievements"]
+            return achievements_cache
+
         async def get_unlocked_achievements(self, game_id, context):
             # The Social Club API has an authentication endpoint located at https://scapi.rockstargames.com/
             # achievements/awardedAchievements?title=[game-id]&platform=pc&rockstarId=[rockstar-ID], which returns a
@@ -247,36 +258,40 @@ class RockstarPlugin(Plugin):
             url = (f"https://scapi.rockstargames.com/achievements/awardedAchievements?title={achievement_id}"
                    f"&platform=pc&rockstarId={self._http_client.get_rockstar_id()}")
             unlocked_achievements = await self._http_client.get_json_from_request_strict(url)
-            if not str("achievements_" + achievement_id) in self._all_achievements_cache:
+            # if not str("achievements_" + achievement_id) in self._all_achievements_cache:
                 # In order to prevent having to make an HTTP request for a game's entire achievement list, it would be
                 # better to store it in a cache.
-                log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
-                          "cache!")
-                await self.update_achievements_cache(achievement_id)
-            all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+                # log.debug("ROCKSTAR_MISSING_CACHE: The achievements list for " + title_id + " is not in the persistent "
+                          # "cache!")
+                # await self.update_achievements_cache(achievement_id)
+            all_achievements = context[game_id]
             achievements_dict = unlocked_achievements["awardedAchievements"]
             achievements_list = []
             for key, value in achievements_dict.items():
                 # What if an achievement is added to the Social Club after the cache was already made? In this event, we
                 # need to refresh the cache.
                 if int(key) > len(all_achievements):
-                    await self.update_achievements_cache(achievement_id)
-                    all_achievements = self._all_achievements_cache[str("achievements_" + achievement_id)]
+                    all_achievements = await self.update_achievements_cache(game_id, all_achievements)
                 achievement_num = key
                 unlock_time = await get_unix_epoch_time_from_date(value["dateAchieved"])
                 achievement_name = all_achievements[int(key) - 1]["name"]
                 achievements_list.append(Achievement(unlock_time, achievement_num, achievement_name))
             return achievements_list
 
-        async def update_achievements_cache(self, achievement_id):
+        async def update_achievements_cache(self, game_id: str, all_achievements: dict) -> dict:
+            new_cache = all_achievements.copy()
+            achievement_id = get_achievement_id_from_ros_title_id(game_id)
             url = f"https://scapi.rockstargames.com/achievements/all?title={achievement_id}&platform=pc"
-            all_achievements = await self._http_client.get_json_from_request_strict(url)
-            self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
-            log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
-            self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
-                all_achievements["achievements"]).hex()
-            log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
-            self.push_cache()
+            new_achievements = await self._http_client.get_json_from_request_strict(url)
+            new_cache[game_id] = new_achievements["achievements"]
+            return new_cache
+            # all_achievements = await self._http_client.get_json_from_request_strict(url)
+            # self._all_achievements_cache[str("achievements_" + achievement_id)] = all_achievements["achievements"]
+            # log.debug("ROCKSTAR_ACHIEVEMENTS: Pushing achievements_" + achievement_id + " to the persistent cache...")
+            # self.persistent_cache[str("achievements_" + achievement_id)] = pickle.dumps(
+                # all_achievements["achievements"]).hex()
+            # log.debug("ROCKSTAR_NEW_CACHE: " + self.persistent_cache[str("achievements_" + achievement_id)])
+            # self.push_cache()
 
     async def get_friends(self) -> List[UserInfo]:
         # The Social Club website returns a list of the current user's friends through the url
