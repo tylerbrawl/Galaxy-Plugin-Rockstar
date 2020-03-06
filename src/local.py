@@ -2,7 +2,6 @@ from winreg import *
 import logging as log
 import subprocess
 import asyncio
-import locale
 
 from galaxy.proc_tools import pids
 
@@ -62,12 +61,17 @@ class LocalClient:
     async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
         tracked_key = "trackEXE" if "trackEXE" in games_cache[title_id] else "launchEXE"
+        # When reading output from the Windows Command Prompt, it is a good idea to first set the code page to one that
+        # is used by the application. In this case, "chcp 65001" is sent to change the code page to Unicode, which is
+        # what Python uses. Changes to the code page in this manner are temporary, so it should be sent along with the
+        # desired command in one call to subprocess.Popen() (such as by using "&"). The "shell" parameter must also be
+        # set to "True."
         find_actual_pid = subprocess.Popen(
-            f'tasklist /FI "IMAGENAME eq {games_cache[title_id][tracked_key]} " /FI "STATUS eq running" /FO LIST',
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            f'chcp 65001 & tasklist /FI "IMAGENAME eq {games_cache[title_id][tracked_key]} " /FI "STATUS eq running" '
+            f'/FO LIST', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         output, err = find_actual_pid.communicate()
 
-        for line in output.decode(locale.getpreferredencoding()).splitlines():
+        for line in output.decode().splitlines():
             if "PID" in line:
                 pid = [str(s) for s in line.split() if s.isdigit()][0]
                 break
