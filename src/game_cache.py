@@ -120,6 +120,17 @@ games_cache = {
         # game has not been released yet.
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
         "isPreOrder": False
+    },
+    "gta4": {
+        "friendlyName": "Grand Theft Auto IV",
+        "guid": "Grand Theft Auto IV",
+        "rosTitleId": 1,
+        "onlineTitleId": 25,
+        "googleTagId": "GTAIV_PC",
+        "launchEXE": "GTAIV.exe",
+        "achievementId": "gtaiv",
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     }
 }
 
