@@ -720,14 +720,6 @@ class BackendClient:
             }
             resp = await self._current_session.get(url, headers=headers)
             await self._update_cookies_from_response(resp)
-            filtered_cookies = resp.cookies
-            if "TS01a305c4" in filtered_cookies:
-                if LOG_SENSITIVE_DATA:
-                    log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(filtered_cookies['TS01a305c4'].value)}")
-                else:
-                    log.debug("ROCKSTAR_SC_TS01a305c4: ***")
-            else:
-                raise BackendError
 
             url = "https://signin.rockstargames.com/api/connect/check/socialclub"
             rsso_name, rsso_value = self._get_rsso_cookie()
@@ -749,6 +741,14 @@ class BackendClient:
             async with create_client_session() as s:
                 resp = await s.post(url, json=data, headers=headers)
             await self._update_cookies_from_response(resp)
+            filtered_cookies = resp.cookies
+            if "TS01a305c4" in filtered_cookies:
+                if LOG_SENSITIVE_DATA:
+                    log.debug(f"ROCKSTAR_SC_TS01a305c4: {str(filtered_cookies['TS01a305c4'].value)}")
+                else:
+                    log.debug("ROCKSTAR_SC_TS01a305c4: ***")
+            else:
+                raise BackendError
             # We need to set the new refresh token here, if it is updated.
             try:
                 self.set_refresh_token(resp.cookies['RMT'].value)
