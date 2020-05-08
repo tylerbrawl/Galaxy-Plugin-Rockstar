@@ -6,7 +6,7 @@ from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, Networ
 
 from file_read_backwards import FileReadBackwards
 from time import time
-from typing import List, Any
+from typing import List, Any, Optional
 import asyncio
 import dataclasses
 import datetime
@@ -95,9 +95,11 @@ class RockstarPlugin(Plugin):
             # The game time cache was not found in the persistent cache, so the plugin will instead attempt to get the
             # cache from the user's file stored on their disk.
             file_location = os.path.join(self.documents_location, "RockstarPlayTimeCache.txt")
+            log.debug(f"File Location: {file_location}")
             try:
                 file = open(file_location, "r")
                 for line in file.readlines():
+                    log.debug(f"Line: {line}")
                     if line[:1] != "#":
                         log.debug("ROCKSTAR_LOCAL_GAME_TIME_FROM_FILE: " + str(pickle.loads(bytes.fromhex(line))))
                         self.game_time_cache = pickle.loads(bytes.fromhex(line))
@@ -402,6 +404,15 @@ class RockstarPlugin(Plugin):
                 self.owned_games_cache.append(game)
 
         return self.owned_games_cache
+
+    if IS_WINDOWS:
+        async def get_local_size(self, game_id: str, context: Any) -> Optional[int]:
+            title_id = get_game_title_id_from_ros_title_id(game_id)
+            game_status = self.check_game_status(title_id)
+            if game_status.local_game_state == LocalGameState.None_:
+                return 0
+            return await self._local_client.get_game_size_in_bytes(title_id)
+
 
     @staticmethod
     async def parse_log_file(log_file, owned_title_ids, online_check_success):

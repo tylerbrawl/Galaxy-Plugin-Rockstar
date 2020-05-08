@@ -1,3 +1,4 @@
+from typing import Optional
 from winreg import *
 import logging as log
 import subprocess
@@ -57,6 +58,24 @@ class LocalClient:
             # log.debug("ROCKSTAR_GAME_NOT_INSTALLED: The game with ID " + title_id + " is not installed.") - Reduce
             # Console Spam (Enable this if you need to.)
             return None
+
+    async def get_game_size_in_bytes(self, title_id) -> Optional[int]:
+        path = self.get_path_to_game(title_id)
+        log.debug(f"Path: {path}")
+        find_game_size = subprocess.Popen(
+            f'chcp 65001 & dir {path} /a /s /-c', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, err = find_game_size.communicate()
+
+        # The file size will be listed in the second-to-last line of the output.
+        line_list = output.decode().splitlines()
+        log.debug(f"Line List: {str(line_list)}")
+        game_size_line = line_list[len(line_list) - 2]
+        log.debug(f"ROCKSTAR_GAME_SIZE_LINE: {game_size_line}")
+        size = None
+        if "bytes" in game_size_line:
+            size = int([str(s) for s in game_size_line.split() if s.isdigit()][1])
+        log.debug(f"ROCKSTAR_GAME_SIZE: {size}")
+        return size
 
     async def game_pid_from_tasklist(self, title_id) -> str:
         pid = None
