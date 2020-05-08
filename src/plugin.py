@@ -95,11 +95,9 @@ class RockstarPlugin(Plugin):
             # The game time cache was not found in the persistent cache, so the plugin will instead attempt to get the
             # cache from the user's file stored on their disk.
             file_location = os.path.join(self.documents_location, "RockstarPlayTimeCache.txt")
-            log.debug(f"File Location: {file_location}")
             try:
                 file = open(file_location, "r")
                 for line in file.readlines():
-                    log.debug(f"Line: {line}")
                     if line[:1] != "#":
                         log.debug("ROCKSTAR_LOCAL_GAME_TIME_FROM_FILE: " + str(pickle.loads(bytes.fromhex(line))))
                         self.game_time_cache = pickle.loads(bytes.fromhex(line))
@@ -400,7 +398,6 @@ class RockstarPlugin(Plugin):
             game = self.create_game_from_title_id(title_id)
             if game not in self.owned_games_cache:
                 log.debug("ROCKSTAR_ADD_GAME: Adding " + title_id + " to owned games cache...")
-                self.add_game(game)
                 self.owned_games_cache.append(game)
 
         return self.owned_games_cache
@@ -412,7 +409,6 @@ class RockstarPlugin(Plugin):
             if game_status.local_game_state == LocalGameState.None_:
                 return 0
             return await self._local_client.get_game_size_in_bytes(title_id)
-
 
     @staticmethod
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
