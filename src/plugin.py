@@ -6,7 +6,7 @@ from galaxy.api.errors import InvalidCredentials, AuthenticationRequired, Networ
 
 from file_read_backwards import FileReadBackwards
 from time import time
-from typing import List, Any
+from typing import List, Any, Optional
 import asyncio
 import dataclasses
 import datetime
@@ -398,10 +398,17 @@ class RockstarPlugin(Plugin):
             game = self.create_game_from_title_id(title_id)
             if game not in self.owned_games_cache:
                 log.debug("ROCKSTAR_ADD_GAME: Adding " + title_id + " to owned games cache...")
-                self.add_game(game)
                 self.owned_games_cache.append(game)
 
         return self.owned_games_cache
+
+    if IS_WINDOWS:
+        async def get_local_size(self, game_id: str, context: Any) -> Optional[int]:
+            title_id = get_game_title_id_from_ros_title_id(game_id)
+            game_status = self.check_game_status(title_id)
+            if game_status.local_game_state == LocalGameState.None_:
+                return 0
+            return await self._local_client.get_game_size_in_bytes(title_id)
 
     @staticmethod
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
