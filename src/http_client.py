@@ -12,9 +12,11 @@ import asyncio
 import dataclasses
 import dateutil.tz
 import datetime
+import json
 import logging as log
 import pickle
 import re
+import urllib.parse
 
 from html.parser import HTMLParser
 from time import time
@@ -236,17 +238,18 @@ class BackendClient:
             if LOG_SENSITIVE_DATA:
                 log.debug(f"ROCKSTAR_OLD_AUTH: {old_auth}")
             else:
-                log.debug(f"ROCKSTAR_OLD_AUTH: {str(old_auth)[:5]}***{str(old_auth[-3:])}")
+                log.debug(f"ROCKSTAR_OLD_AUTH: ***")
             headers = {
-                "accept": "application/json, text/plain, */*",
-                "connection": "keep-alive",
-                "cookie": "ScAuthTokenData=" + old_auth,
-                "host": "www.rockstargames.com",
+                "accept": "*/*",
+                "cookie": await self.get_cookies_for_headers(),
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
             }
-            resp = await self._current_session.get(r"https://www.rockstargames.com/auth/get-user.json", headers=headers,
-                                                   allow_redirects=False)
+            resp = await self._current_session.get(r"https://www.rockstargames.com/graph.json?operationName=User&"
+                                                   r"variables=%7B%22locale%22%3A%22en_us%22%7D&extensions=%7B%22"
+                                                   r"persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22"
+                                                   r"6aa5127bff85d7fc23ffc192c74bb2e38c3c855482b33b2395aa103a554e9241"
+                                                   r"%22%7D%7D", headers=headers, allow_redirects=False)
             await self._update_cookies_from_response(resp)
             # aiohttp allows you to get a specified cookie from the previous response.
             filtered_cookies = resp.cookies
@@ -256,15 +259,15 @@ class BackendClient:
                     log.debug(f"ROCKSTAR_NEW_TS_COOKIE: {ts_val}")
                 else:
                     log.debug("ROCKSTAR_NEW_TS_COOKIE: ***")
-            if "ScAuthTokenData" in filtered_cookies:
-                new_auth = filtered_cookies['ScAuthTokenData'].value
+            if "ScAuthTokenData2020" in filtered_cookies:
+                new_auth = filtered_cookies['ScAuthTokenData2020'].value
                 if LOG_SENSITIVE_DATA:
                     log.debug(f"ROCKSTAR_NEW_AUTH: {new_auth}")
                 else:
-                    log.debug(f"ROCKSTAR_NEW_AUTH: {str(new_auth)[:5]}***{str(new_auth[-3:])}")
+                    log.debug(f"ROCKSTAR_NEW_AUTH: ***")
                 self._current_auth_token = new_auth
                 if LOG_SENSITIVE_DATA:
-                    log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData value has changed!")
+                    log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData2020 value has changed!")
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
             else:
@@ -274,19 +277,19 @@ class BackendClient:
                 if LOG_SENSITIVE_DATA:
                     log.debug(f"ROCKSTAR_NEW_AUTH: {old_auth}")
                 else:
-                    log.debug(f"ROCKSTAR_NEW_AUTH: {str(old_auth)[:5]}***{str(old_auth)[-3:]}")
+                    log.debug(f"ROCKSTAR_NEW_AUTH: ***")
             return await resp.json()
         except Exception as e:
             if message is not None:
                 log.warning(message)
             else:
-                log.warning("ROCKSTAR_USER_JSON_WARNING: The request to get the get-user.json file resulted in this"
+                log.warning("ROCKSTAR_USER_JSON_WARNING: The request to get the user from the graph resulted in this"
                             " exception: " + repr(e) + ". Attempting to refresh credentials...")
             try:
                 await self.refresh_credentials()
                 return await self._get_user_json(message)
             except Exception:
-                log.exception("ROCKSTAR_USER_JSON_ERROR: The request to get the get-user.json file failed even after "
+                log.exception("ROCKSTAR_USER_JSON_ERROR: The request to get the user from the graph failed even after "
                               "attempting to refresh credentials. Revoking user authentication...")
                 raise AuthenticationRequired
 
@@ -294,10 +297,12 @@ class BackendClient:
         try:
             resp_json = await self._get_user_json()
             if LOG_SENSITIVE_DATA:
-                log.debug("ROCKSTAR_AUTH_JSON: " + str(resp_json))
-            new_bearer = resp_json["user"]["auth_token"]["access_token"]
+                log.debug("ROCKSTAR_USER_GRAPH_JSON: " + str(resp_json))
+
+            cookie_json = json.loads(urllib.parse.unquote(self._current_sc_token))
+            new_bearer = cookie_json["access_token"]
             self.bearer = new_bearer
-            self.refresh = resp_json["user"]["auth_token"]["refresh_token"]
+            self.refresh = cookie_json["refresh_token"]
             return new_bearer
         except Exception as e:
             log.error("ERROR: The request to refresh credentials resulted in this exception: " + repr(e))
@@ -615,30 +620,30 @@ class BackendClient:
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
             else:
-                log.debug(f"ROCKSTAR_OLD_AUTH_REFRESH: {old_auth[:5]}***{old_auth[-3:]}")
-            url = "https://www.rockstargames.com/auth/login.json"
+                log.debug(f"ROCKSTAR_OLD_AUTH_REFRESH: ***")
+            url = ("https://www.rockstargames.com/graph.json?operationName=User&variables=%7B%22"
+                   f"code%22%3A%22{refresh_code}%22%2C%22locale%22%3A%22en_us%22%7D&"
+                   "extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%"
+                   "226aa5127bff85d7fc23ffc192c74bb2e38c3c855482b33b2395aa103a554e9241%22%7D%7D")
             headers = {
-                "Accept": "application/json, text/plain, */*",
-                "Cookie": "TS019978c2=" + self._current_session.cookie_jar.get('TS019978c2',
-                                                                               domain='support.rockstargames.com'),
+                "Accept": "*/*",
+                "Cookie": await self.get_cookies_for_headers(),
                 "Content-type": "application/json",
-                "Host": "www.rockstargames.com",
                 "Referer": "https://www.rockstargames.com/",
                 "User-Agent": USER_AGENT
             }
-            data = {"code": refresh_code}
-            final_request = await self._current_session.post(url, json=data, headers=headers)
+            final_request = await self._current_session.get(url, headers=headers)
             await self._update_cookies_from_response(final_request)
             final_json = await final_request.json()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
             filtered = final_request.cookies
-            new_auth = filtered['ScAuthTokenData'].value
+            new_auth = filtered['ScAuthTokenData2020'].value
             self._current_auth_token = new_auth
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
             else:
-                log.debug(f"ROCKSTAR_NEW_AUTH_REFRESH: {new_auth[:5]}***{new_auth[-3:]}")
+                log.debug(f"ROCKSTAR_NEW_AUTH_REFRESH: ***")
             if old_auth != new_auth:
                 log.debug("ROCKSTAR_REFRESH_SUCCESS: The user has been successfully re-authenticated!")
         except Exception as e:
