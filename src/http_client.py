@@ -579,16 +579,15 @@ class BackendClient:
 
     async def _refresh_credentials_base(self):
         # This request returns a new ScAuthTokenData2020 value, which is used as authentication for the base website of
-        # https://www.rockstargames.com/. This value grants access to the get-user.json file found on that website,
-        # which contains an access (bearer) token for https://www.rockstargames.com/ and
-        # https://scapi.rockstargames.com/.
+        # https://www.rockstargames.com/. The cookie itself is updated in a GET request to Rockstar's newly implemented
+        # graph.
 
         # It seems like the Rockstar website connects to https://signin.rockstargames.com/connect/cors/check/rsg via a
         # POST request in order to re-authenticate the user. This request uses a fingerprint as form data.
 
-        # This POST request then returns a message with a code, which is then sent as a request payload to
-        # https://www.rockstargames.com/auth/login.json in the form of {code: "{code}"}. Note that {code} includes
-        # its own set of quotation marks, so it looks like {code: ""{Numbers/Letters}""}.
+        # This POST request then returns a message with a code, which is then sent in an encoded URL to
+        # https://www.rockstargames.com/graph.json (see below for the full URL). It is unknown what the SHA-256 hash is
+        # derived from, although the value is consistent between calls to the endpoint.
 
         # Finally, this last request updates the cookies that are used for further authentication.
         try:
