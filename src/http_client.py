@@ -142,7 +142,7 @@ class BackendClient:
 
     def set_current_auth_token(self, token):
         self._current_auth_token = token
-        self._current_session.cookie_jar.update_cookies({'ScAuthTokenData': token})
+        self._current_session.cookie_jar.update_cookies({'ScAuthTokenData2020': token})
 
     def set_current_sc_token(self, token):
         self._current_sc_token = token
@@ -271,7 +271,7 @@ class BackendClient:
                 if self.user is not None:
                     self._store_credentials(self.get_credentials())
             else:
-                # For security purposes, the ScAuthTokenData value (whether hidden or not) is logged, regardless of
+                # For security purposes, the ScAuthTokenData2020 value (whether hidden or not) is logged, regardless of
                 # whether or not it has changed. If the logged outputs are similar between the two, it is harder to tell
                 # if the value has really changed or not.
                 if LOG_SENSITIVE_DATA:
@@ -299,7 +299,9 @@ class BackendClient:
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_USER_GRAPH_JSON: " + str(resp_json))
 
-            cookie_json = json.loads(urllib.parse.unquote(self._current_sc_token))
+            cookie_json = json.loads(urllib.parse.unquote(self._current_auth_token))
+            if LOG_SENSITIVE_DATA:
+                log.debug("ROCKSTAR_AUTH_COOKIE: " + str(cookie_json))
             new_bearer = cookie_json["access_token"]
             self.bearer = new_bearer
             self.refresh = cookie_json["refresh_token"]
@@ -576,7 +578,7 @@ class BackendClient:
         self._refreshing = False
 
     async def _refresh_credentials_base(self):
-        # This request returns a new ScAuthTokenData value, which is used as authentication for the base website of
+        # This request returns a new ScAuthTokenData2020 value, which is used as authentication for the base website of
         # https://www.rockstargames.com/. This value grants access to the get-user.json file found on that website,
         # which contains an access (bearer) token for https://www.rockstargames.com/ and
         # https://scapi.rockstargames.com/.
