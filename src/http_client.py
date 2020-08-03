@@ -623,7 +623,7 @@ class BackendClient:
             else:
                 log.debug(f"ROCKSTAR_OLD_AUTH_REFRESH: ***")
             url = ("https://www.rockstargames.com/graph.json?operationName=User&variables=%7B%22"
-                   f"code%22%3A%22{refresh_code}%22%2C%22locale%22%3A%22en_us%22%7D&"
+                   f"code%22%3A%22{refresh_code[1:-1]}%22%2C%22locale%22%3A%22en_us%22%7D&"
                    "extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%"
                    "226aa5127bff85d7fc23ffc192c74bb2e38c3c855482b33b2395aa103a554e9241%22%7D%7D")
             headers = {
