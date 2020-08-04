@@ -405,9 +405,6 @@ class RockstarPlugin(Plugin):
     if IS_WINDOWS:
         async def get_local_size(self, game_id: str, context: Any) -> Optional[int]:
             title_id = get_game_title_id_from_ros_title_id(game_id)
-            game_status = self.check_game_status(title_id)
-            if game_status.local_game_state == LocalGameState.None_:
-                return 0
             return await self._local_client.get_game_size_in_bytes(title_id)
 
     @staticmethod
