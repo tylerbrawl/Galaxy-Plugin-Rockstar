@@ -586,8 +586,28 @@ class BackendClient:
         # POST request in order to re-authenticate the user. This request uses a fingerprint as form data.
 
         # This POST request then returns a message with a code, which is then sent in an encoded URL to
-        # https://www.rockstargames.com/graph.json (see below for the full URL). It is unknown what the SHA-256 hash is
-        # derived from, although the value is consistent between calls to the endpoint.
+        # https://www.rockstargames.com/graph.json (see below for the full URL). This is an endpoint to Rockstar's
+        # GraphQL server, and the SHA-256 hash is derived from the request made to the server as a query. As of now,
+        # this is the string that generates the correct hash:
+
+        # query User($code: String) {
+        #   user(code: $code) {
+        #     ...userFields
+        #     __typename
+        #   }
+        # }
+        #
+        # fragment userFields on RockstarGames_Users_Graph_Type_User {
+        #   id
+        #   nickname
+        #   avatar
+        #   profile_link
+        #   dob
+        #   __typename
+        # }
+        #
+
+        # (NOTE: The intentional new-line character at the end must be included to generate the correct hash.)
 
         # Finally, this last request updates the cookies that are used for further authentication.
         try:
