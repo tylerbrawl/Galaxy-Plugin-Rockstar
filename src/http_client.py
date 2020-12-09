@@ -128,11 +128,13 @@ class BackendClient:
 
         if re.search("^rsso", cookie['name']):
             self._current_session.cookie_jar.remove_cookie_regex("^rsso")
-        cookie_object = SimpleCookie()
-        cookie_object[cookie['name']] = cookie['value']
-        cookie_object[cookie['name']]['domain'] = cookie['domain']
-        cookie_object[cookie['name']]['path'] = cookie['path']
-        self._current_session.cookie_jar.update_cookies(cookie_object)
+
+        if cookie['name'] != '':
+            cookie_object = SimpleCookie()
+            cookie_object[cookie['name']] = cookie['value']
+            cookie_object[cookie['name']]['domain'] = cookie['domain']
+            cookie_object[cookie['name']]['path'] = cookie['path']
+            self._current_session.cookie_jar.update_cookies(cookie_object)
 
     def set_auth_lost_callback(self, callback):
         self._auth_lost_callback = callback
