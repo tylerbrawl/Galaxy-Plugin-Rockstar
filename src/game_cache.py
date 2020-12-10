@@ -134,6 +134,14 @@ games_cache = {
     }
 }
 
+ignore_game_title_ids_list = [
+    "rdr2_sp_steam",  # Red Dead Redemption 2 Single Player - Steam
+    "rdr2_sp_rgl",    # Red Dead Redemption 2 Single Player - Rockstar Games Launcher
+    "rdr2_sp",        # Red Dead Redemption 2 Single Player - General
+    "rdr2_rdo",       # Red Dead Online Standalone
+    "rdr2_sp_epic"    # Red Dead Redemption 2 Single Player - Epic Games Store
+]
+
 
 def get_game_title_id_from_ros_title_id(ros_title_id):
     # The rosTitleId value is used by the Rockstar Games Launcher to uniquely identify the games that it supports.
