@@ -19,7 +19,8 @@ import webbrowser
 
 from consts import AUTH_PARAMS, NoGamesInLogException, NoLogFoundException, IS_WINDOWS, LOG_SENSITIVE_DATA, \
     ARE_ACHIEVEMENTS_IMPLEMENTED, CONFIG_OPTIONS, get_unix_epoch_time_from_date
-from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id
+from game_cache import games_cache, get_game_title_id_from_ros_title_id, get_achievement_id_from_ros_title_id, \
+    ignore_game_title_ids_list
 from http_client import BackendClient
 from version import __version__
 
@@ -411,7 +412,9 @@ class RockstarPlugin(Plugin):
     async def parse_log_file(log_file, owned_title_ids, online_check_success):
         owned_title_ids_ = owned_title_ids
         checked_games_count = 0
-        total_games_count = len(games_cache) - 1  # We need to subtract 1 to account for the Launcher.
+        # We need to subtract 1 to account for the Launcher.
+        total_games_count = len(games_cache) + len(ignore_game_title_ids_list) - 1
+
         if os.path.exists(log_file):
             with FileReadBackwards(log_file, encoding="utf-8") as frb:
                 while checked_games_count < total_games_count:
@@ -439,25 +442,37 @@ class RockstarPlugin(Plugin):
                     #    it. In this case, the game will be added to owned_title_ids.
                     if ("launcher" not in line) and ("on branch " in line):  # Found a game!
                         # Each log line for a title branch report describes the title id of the game starting at
-                        # character 65. Interestingly, the lines all have the same colon as character 75. This implies
-                        # that this format was intentionally done by Rockstar, so they likely will not change it anytime
-                        # soon.
-                        title_id = line[65:75].strip()
-                        log.debug("ROCKSTAR_LOG_GAME: The game with title ID " + title_id + " is owned!")
-                        if title_id not in owned_title_ids_:
-                            if online_check_success is True:
-                                # Case 2: The game is owned, but has not been played.
-                                log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
-                                            " is owned, but it has never been played!")
-                            owned_title_ids_.append(title_id)
+                        # character 65. From there, we search for the first occurrence of a colon starting from where
+                        # the title_id begins (character 65).
+                        end_index = line[65:].index(':') + 65
+                        title_id = line[65:end_index].strip()
+
+                        # Ignore title IDs which are present in the ignore_game_title_ids_list.
+                        if title_id in ignore_game_title_ids_list:
+                            log.debug("ROCKSTAR_IGNORE_GAME: Ignoring owned game " + title_id + "...")
+                        else:
+                            log.debug("ROCKSTAR_LOG_GAME: The game with title ID " + title_id + " is owned!")
+                            if title_id not in owned_title_ids_:
+                                if online_check_success is True:
+                                    # Case 2: The game is owned, but has not been played.
+                                    log.warning("ROCKSTAR_UNPLAYED_GAME: The game with title ID " + title_id +
+                                                " is owned, but it has never been played!")
+                                owned_title_ids_.append(title_id)
                         checked_games_count += 1
+
                     elif "no branches!" in line:
-                        title_id = line[65:75].strip()
-                        if title_id in owned_title_ids_:
-                            # Case 1: The game is not actually owned on the launcher.
-                            log.warning("ROCKSTAR_FAKE_GAME: The game with title ID " + title_id + " is not owned on "
-                                        "the Rockstar Games Launcher!")
-                            owned_title_ids_.remove(title_id)
+                        end_index = line[65:].index(':') + 65
+                        title_id = line[65:end_index].strip()
+
+                        # Ignore title IDs which are present in the ignore_game_title_ids_list.
+                        if title_id in ignore_game_title_ids_list:
+                            log.debug("ROCKSTAR_IGNORE_GAME: Ignoring owned game " + title_id + "...")
+                        else:
+                            if title_id in owned_title_ids_:
+                                # Case 1: The game is not actually owned on the launcher.
+                                log.warning("ROCKSTAR_FAKE_GAME: The game with title ID " + title_id + " is not owned on "
+                                            "the Rockstar Games Launcher!")
+                                owned_title_ids_.remove(title_id)
                         checked_games_count += 1
                     if checked_games_count == total_games_count:
                         break
