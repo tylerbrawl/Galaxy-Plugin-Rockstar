@@ -442,8 +442,8 @@ class RockstarPlugin(Plugin):
                     #    it. In this case, the game will be added to owned_title_ids.
                     if ("launcher" not in line) and ("on branch " in line):  # Found a game!
                         # Each log line for a title branch report describes the title id of the game starting at
-                        # character 65. From there, the title IDs do not have spaces in them, so we search for the
-                        # first occurrence of a space starting from where the title_id begins (character 65).
+                        # character 65. From there, we search for the first occurrence of a colon starting from where
+                        # the title_id begins (character 65).
                         end_index = line[65:].index(':') + 65
                         title_id = line[65:end_index].strip()
 
