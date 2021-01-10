@@ -602,11 +602,13 @@ class RockstarPlugin(Plugin):
             for game in self.total_games_cache:
                 title_id = get_game_title_id_from_ros_title_id(str(game.game_id))
                 game_installed = self._local_client.get_path_to_game(title_id)
-                if game_installed:
+                if title_id != "launcher" and game_installed:
                     state |= LocalGameState.Installed
                     local_game = self.check_game_status(title_id)
                     local_games[title_id] = local_game
                     local_list.append(local_game)
+                else:
+                    continue
             self.local_games_cache = local_games
             log.debug(f"ROCKSTAR_INSTALLED_GAMES: {local_games}")
             return local_list
