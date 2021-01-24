@@ -247,11 +247,11 @@ class BackendClient:
                 "referer": "https://www.rockstargames.com",
                 "user-agent": USER_AGENT
             }
-            resp = await self._current_session.get(r"https://www.rockstargames.com/graph.json?operationName=User&"
-                                                   r"variables=%7B%22locale%22%3A%22en_us%22%7D&extensions=%7B%22"
-                                                   r"persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22"
-                                                   r"6aa5127bff85d7fc23ffc192c74bb2e38c3c855482b33b2395aa103a554e9241"
-                                                   r"%22%7D%7D", headers=headers, allow_redirects=False)
+            resp = await self._current_session.get("https://graph.rockstargames.com/?operationName=UserData&variables="
+                                                   "%7B%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C"
+                                                   "%22sha256Hash%22%3A%224015efac722ba3668f30067cc729d9ecf9d7761f22ba5"
+                                                   "a58c8e1530a309ab029%22%7D%7D", headers=headers,
+                                                   allow_redirects=False)
             await self._update_cookies_from_response(resp)
             # aiohttp allows you to get a specified cookie from the previous response.
             filtered_cookies = resp.cookies
@@ -261,17 +261,27 @@ class BackendClient:
                     log.debug(f"ROCKSTAR_NEW_TS_COOKIE: {ts_val}")
                 else:
                     log.debug("ROCKSTAR_NEW_TS_COOKIE: ***")
-            if "ScAuthTokenData2020" in filtered_cookies:
-                new_auth = filtered_cookies['ScAuthTokenData2020'].value
-                if LOG_SENSITIVE_DATA:
-                    log.debug(f"ROCKSTAR_NEW_AUTH: {new_auth}")
-                else:
-                    log.debug(f"ROCKSTAR_NEW_AUTH: ***")
-                self._current_auth_token = new_auth
-                if LOG_SENSITIVE_DATA:
-                    log.warning("ROCKSTAR_AUTH_CHANGE: The ScAuthTokenData2020 value has changed!")
-                if self.user is not None:
-                    self._store_credentials(self.get_credentials())
+
+            auth_cookie = None
+            for cookie in filtered_cookies:
+                if cookie.find("TSc") != -1:
+                    auth_cookie = cookie
+                    log.debug(f"ROCKSTAR_AUTH_FIND_NAME: {auth_cookie}")
+                    break
+            else:
+                log.debug(f"ROCKSTAR_AUTH_FIND_ERROR: The authentication cookie could not be found!")
+                raise AuthenticationRequired
+
+            new_auth = filtered_cookies[auth_cookie].value
+            if LOG_SENSITIVE_DATA:
+                log.debug(f"ROCKSTAR_NEW_AUTH: {new_auth}")
+            else:
+                log.debug(f"ROCKSTAR_NEW_AUTH: ***")
+            self._current_auth_token = new_auth
+            if LOG_SENSITIVE_DATA:
+                log.warning("ROCKSTAR_AUTH_CHANGE: The authentication cookie's value has changed!")
+            if self.user is not None:
+                self._store_credentials(self.get_credentials())
             else:
                 # For security purposes, the ScAuthTokenData2020 value (whether hidden or not) is logged, regardless of
                 # whether or not it has changed. If the logged outputs are similar between the two, it is harder to tell
@@ -640,14 +650,13 @@ class BackendClient:
                 self.set_refresh_token('')
             old_auth = self._current_auth_token
             self._current_auth_token = None
-            if LOG_SENSITIVE_DATA:
+            if LOG_SENSITIVE_DATA and old_auth:
                 log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
             else:
                 log.debug(f"ROCKSTAR_OLD_AUTH_REFRESH: ***")
-            url = ("https://www.rockstargames.com/graph.json?operationName=User&variables=%7B%22"
-                   f"code%22%3A%22{refresh_code[1:-1]}%22%2C%22locale%22%3A%22en_us%22%7D&"
-                   "extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%"
-                   "226aa5127bff85d7fc23ffc192c74bb2e38c3c855482b33b2395aa103a554e9241%22%7D%7D")
+            url = ("https://graph.rockstargames.com/?operationName=UserLogInWithCode&variables=%7B%22code%22%3A%22"
+                   f"{refresh_code[1:-1]}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256"
+                   f"Hash%22%3A%22f902f5e7decf19f79f7cb4e23a9e0ce9de6891b1dd0c27028da6cf4b480b113f%22%7D%7D")
             headers = {
                 "Accept": "*/*",
                 "Cookie": await self.get_cookies_for_headers(),
@@ -661,7 +670,16 @@ class BackendClient:
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
             filtered = final_request.cookies
-            new_auth = filtered['ScAuthTokenData2020'].value
+
+            auth_cookie = None
+            for cookie in filtered:
+                if cookie.find("TSc") != -1:
+                    auth_cookie = cookie
+                    break
+            else:
+                log.debug("ROCKSTAR_REFRESH_AUTH_COOKIE_FAILURE: The authentication cookie could not be found!")
+
+            new_auth = filtered[auth_cookie].value
             self._current_auth_token = new_auth
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
@@ -825,10 +843,12 @@ class BackendClient:
             # We need to refresh the credentials.
             await self.refresh_credentials()
             self._auth_lost_callback = None
-        try:
-            self.bearer = await self._get_bearer()
-        except Exception:
-            raise InvalidCredentials
+        # try:
+            # self.bearer = await self._get_bearer()
+        # except Exception:
+            # raise InvalidCredentials
+
+        self.bearer = self._current_sc_token
         if LOG_SENSITIVE_DATA:
             log.debug("ROCKSTAR_HTTP_CHECK: Got bearer token: " + self.bearer)
         else:
