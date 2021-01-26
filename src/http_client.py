@@ -283,9 +283,9 @@ class BackendClient:
             if self.user is not None:
                 self._store_credentials(self.get_credentials())
             else:
-                # For security purposes, the ScAuthTokenData2020 value (whether hidden or not) is logged, regardless of
-                # whether or not it has changed. If the logged outputs are similar between the two, it is harder to tell
-                # if the value has really changed or not.
+                # For security purposes, the authentication cookie value (whether hidden or not) is logged, regardless
+                # of whether or not it has changed. If the logged outputs are similar between the two, it is harder to
+                # tell if the value has really changed or not.
                 if LOG_SENSITIVE_DATA:
                     log.debug(f"ROCKSTAR_NEW_AUTH: {old_auth}")
                 else:
@@ -590,9 +590,9 @@ class BackendClient:
         self._refreshing = False
 
     async def _refresh_credentials_base(self):
-        # This request returns a new ScAuthTokenData2020 value, which is used as authentication for the base website of
-        # https://www.rockstargames.com/. The cookie itself is updated in a GET request to Rockstar's newly implemented
-        # graph.
+        # This request returns a new cookie beginning with "TSc", which is used as authentication for the base website
+        # of https://www.rockstargames.com/. The cookie itself is updated in a GET request to Rockstar's newly
+        # implemented graph.
 
         # It seems like the Rockstar website connects to https://signin.rockstargames.com/connect/cors/check/rsg via a
         # POST request in order to re-authenticate the user. This request uses a fingerprint as form data.
@@ -678,6 +678,7 @@ class BackendClient:
                     break
             else:
                 log.debug("ROCKSTAR_REFRESH_AUTH_COOKIE_FAILURE: The authentication cookie could not be found!")
+                raise InvalidCredentials
 
             new_auth = filtered[auth_cookie].value
             self._current_auth_token = new_auth
@@ -843,10 +844,6 @@ class BackendClient:
             # We need to refresh the credentials.
             await self.refresh_credentials()
             self._auth_lost_callback = None
-        # try:
-            # self.bearer = await self._get_bearer()
-        # except Exception:
-            # raise InvalidCredentials
 
         self.bearer = self._current_sc_token
         if LOG_SENSITIVE_DATA:
