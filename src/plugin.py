@@ -160,7 +160,7 @@ class RockstarPlugin(Plugin):
         if LOG_SENSITIVE_DATA:
             log.debug("ROCKSTAR_COOKIE_LIST: " + str(cookies))
         for cookie in cookies:
-            if cookie['name'] == "ScAuthTokenData2020":
+            if cookie['name'].find("TSc") != -1:
                 self._http_client.set_current_auth_token(cookie['value'])
             if cookie['name'] == "BearerToken":
                 self._http_client.set_current_sc_token(cookie['value'])
