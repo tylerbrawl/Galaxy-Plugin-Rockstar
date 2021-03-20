@@ -365,8 +365,9 @@ class BackendClient:
 
         headers = {
             "Cookie": await self.get_cookies_for_headers(),
-            "RequestVerificationToken": rv_token,
-            "User-Agent": USER_AGENT
+            "__RequestVerificationToken": rv_token,
+            "User-Agent": USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest"
         }
         url = f"https://socialclub.rockstargames.com/ajax/getGoogleTagManagerSetupData?_={int(time() * 1000)}"
         resp = await self._current_session.get(url, headers=headers)
@@ -625,7 +626,7 @@ class BackendClient:
         try:
             url = "https://signin.rockstargames.com/connect/cors/check/rsg"
             headers = {
-                "Accept": "application/json, text/plain, */*",
+                "Accept": "*/*",
                 "Cookie": await self.get_cookies_for_headers(),
                 "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
                 "Host": "signin.rockstargames.com",
@@ -654,9 +655,7 @@ class BackendClient:
                 log.debug("ROCKSTAR_OLD_AUTH_REFRESH: " + old_auth)
             else:
                 log.debug(f"ROCKSTAR_OLD_AUTH_REFRESH: ***")
-            url = ("https://graph.rockstargames.com/?operationName=UserLogInWithCode&variables=%7B%22code%22%3A%22"
-                   f"{refresh_code[1:-1]}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256"
-                   f"Hash%22%3A%22f902f5e7decf19f79f7cb4e23a9e0ce9de6891b1dd0c27028da6cf4b480b113f%22%7D%7D")
+            url = f"https://www.rockstargames.com/auth/gateway.json?code={refresh_code[1:-1]}"
             headers = {
                 "Accept": "*/*",
                 "Cookie": await self.get_cookies_for_headers(),
@@ -669,18 +668,8 @@ class BackendClient:
             final_json = await final_request.json()
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_REFRESH_JSON: " + str(final_json))
-            filtered = final_request.cookies
 
-            auth_cookie = None
-            for cookie in filtered:
-                if cookie.find("TSc") != -1:
-                    auth_cookie = cookie
-                    break
-            else:
-                log.debug("ROCKSTAR_REFRESH_AUTH_COOKIE_FAILURE: The authentication cookie could not be found!")
-                raise InvalidCredentials
-
-            new_auth = filtered[auth_cookie].value
+            new_auth = final_json["bearerToken"]
             self._current_auth_token = new_auth
             if LOG_SENSITIVE_DATA:
                 log.debug("ROCKSTAR_NEW_AUTH_REFRESH: " + new_auth)
