@@ -20,7 +20,7 @@ games_cache = {
     },
     "gtasa": {
         "friendlyName": "Grand Theft Auto: San Andreas",
-        "guid": "Grand Theft Auto: San Andreas",
+        "guid": "{D417C96A-FCC7-4590-A1BB-FAF73F5BC98E}",
         "rosTitleId": 18,
         "onlineTitleId": 31,
         "googleTagId": "GTASA_PC",
@@ -77,7 +77,7 @@ games_cache = {
     # },
     "gta3": {
         "friendlyName": "Grand Theft Auto III",
-        "guid": "Grand Theft Auto III",
+        "guid": "{92B94569-6683-4617-8C54-EB27A1B51B30}",
         "rosTitleId": 26,
         "onlineTitleId": 24,
         "googleTagId": "GTAIII_PC",
@@ -88,7 +88,7 @@ games_cache = {
     },
     "gtavc": {
         "friendlyName": "Grand Theft Auto: Vice City",
-        "guid": "Grand Theft Auto: Vice City",
+        "guid": "{4B35F00C-E63D-40DC-9839-DF15A33EAC46}",
         "rosTitleId": 27,
         "onlineTitleId": 33,
         "googleTagId": "GTAVC_PC",
@@ -99,7 +99,7 @@ games_cache = {
     },
     "bully": {
         "friendlyName": "Bully: Scholarship Edition",
-        "guid": "Bully: Scholarship Edition",
+        "guid": "{A724605D-B399-4304-B8C7-33B3EF7D4677}",
         "rosTitleId": 23,
         "onlineTitleId": 19,
         "googleTagId": "Bully_PC",
@@ -131,15 +131,54 @@ games_cache = {
         "achievementId": "gtaiv",
         "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
         "isPreOrder": False
+    },
+    "gta3unreal": {
+        "friendlyName": "Grand Theft Auto III - The Definitive Edition",
+        "guid": "GTA III - Definitive Edition",
+        "rosTitleId": 28,
+        "googleTagId": "GTA3UNREAL_PC",
+        "launchEXE": "Gameface\\Binaries\\Win64\\LibertyCity.exe",
+        "trackEXE": "LibertyCity.exe",
+        "cmdLineArgs": "-scCommerceProvider=4",
+        "achievementId": "gta3unreal",
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
+    },
+    "gtavcunreal": {
+        "friendlyName": "Grand Theft Auto: Vice City - The Definitive Edition",
+        "guid": "GTA Vice City - Definitive Edition",
+        "rosTitleId": 29,
+        "googleTagId": "GTAVCUNREAL_PC",
+        "launchEXE": "Gameface\\Binaries\\Win64\\ViceCity.exe",
+        "trackEXE": "ViceCity.exe",
+        "cmdLineArgs": "-scCommerceProvider=4",
+        "achievementId": "gtavcunreal",
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
+    },
+    "gtasaunreal": {
+        "friendlyName": "Grand Theft Auto: San Andreas - The Definitive Edition",
+        "guid": "GTA San Andreas - Definitive Edition",
+        "rosTitleId": 30,
+        "googleTagId": "GTASAUNREAL_PC",
+        "launchEXE": "Gameface\\Binaries\\Win64\\SanAndreas.exe",
+        "trackEXE": "SanAndreas.exe",
+        "cmdLineArgs": "-scCommerceProvider=4",
+        "achievementId": "gtasaunreal",
+        "licenseInfo": LicenseInfo(LicenseType.SinglePurchase),
+        "isPreOrder": False
     }
 }
 
+# Typically, we will ignore games from the metadata JSON (see the links in the documentation above games_cache) which
+# have a "parentApp" field. These don't get listed in the Rockstar Games Launcher as programs which can be launched.
 ignore_game_title_ids_list = [
-    "rdr2_sp_steam",  # Red Dead Redemption 2 Single Player - Steam
-    "rdr2_sp_rgl",    # Red Dead Redemption 2 Single Player - Rockstar Games Launcher
-    "rdr2_sp",        # Red Dead Redemption 2 Single Player - General
-    "rdr2_rdo",       # Red Dead Online Standalone
-    "rdr2_sp_epic"    # Red Dead Redemption 2 Single Player - Epic Games Store
+    "rdr2_sp_steam",   # Red Dead Redemption 2 Single Player - Steam
+    "rdr2_sp_rgl",     # Red Dead Redemption 2 Single Player - Rockstar Games Launcher
+    "rdr2_sp",         # Red Dead Redemption 2 Single Player - General
+    "rdr2_rdo",        # Red Dead Online Standalone
+    "rdr2_sp_epic",    # Red Dead Redemption 2 Single Player - Epic Games Store
+    "gtatrilogy"       # Grand Theft Auto: The Definitive Trilogy
 ]
 
 
