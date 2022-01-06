@@ -107,7 +107,12 @@ class LocalClient:
             return
         game_path = f"{path}\\{games_cache[title_id]['launchEXE']}"
         log.debug(f"ROCKSTAR_LAUNCH_REQUEST: Requesting to launch {game_path}...")
-        subprocess.Popen([game_path, "-launchTitleInFolder", path, "@commandline.txt"], stdout=subprocess.DEVNULL,
+
+        launch_params = "-launchTitleInFolder"
+        if "cmdLineArgs" in games_cache[title_id]:
+            launch_params += " " + games_cache[title_id]["cmdLineArgs"]
+
+        subprocess.Popen([game_path, launch_params, path, "@commandline.txt"], stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, shell=False)
         launcher_pid = None
         retries = 120
