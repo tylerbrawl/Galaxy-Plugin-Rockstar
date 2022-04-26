@@ -1,4 +1,4 @@
-# NOTICE: I am currently working on a new implementation for getting the user's owned games from the Social Club, but I need the help of the community to implement it. If you would like to help, see [#46][tagIssue] for more information.
+# NOTICE: If you are getting issues regarding the plugin crashing upon logging in, please refer to issue [#158][tagIssue] before creating a new one.
 
 # Rockstar Games Integration for GOG Galaxy 2.0
 
@@ -33,4 +33,4 @@ Extract the plugin.zip directory from [the releases section of this repository][
 
 [rel]: <https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/releases>
 [issues]: <https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/issues>
-[tagIssue]: <https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/issues/46>
+[tagIssue]: <https://github.com/tylerbrawl/Galaxy-Plugin-Rockstar/issues/158>
