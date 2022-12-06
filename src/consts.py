@@ -41,7 +41,7 @@ AUTH_PARAMS = {
     "window_title": "Login to Rockstar Games Social Club",
     "window_width": 700,
     "window_height": 600,
-    "start_uri": "https://signin.rockstargames.com/connect/authorize/rsg?lang=en-US"&returnUrl=/,
+    "start_uri": f"https://signin.rockstargames.com/connect/authorize/rsg?lang=en-US"&returnUrl=/,
     "end_uri_regex": r"https://scapi.rockstargames.com/profile/getbasicprofile"
 }
 
